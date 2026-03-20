@@ -30,6 +30,7 @@ type LogConfig struct {
 type InputConfig struct {
 	ID     string `mapstructure:"id"`
 	Type   string `mapstructure:"type"`
+	Parser string `mapstructure:"parser"`
 	Secret string `mapstructure:"secret"`
 }
 

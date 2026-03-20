@@ -14,9 +14,11 @@ log:
 inputs:
   - id: beszel
     type: BESZEL
+    parser: json      # json, form, xml, logfmt, regex
     secret: "change-me"
   - id: dozzle
     type: DOZZLE
+    parser: json      # json, form, xml, logfmt, regex
     secret: "change-me"
 
 outputs:

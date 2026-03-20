@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 	httpadapter "relaybox/internal/adapter/input/http"
+	"relaybox/internal/adapter/input/parser"
 	wsadapter "relaybox/internal/adapter/input/websocket"
 	"relaybox/internal/adapter/output/filequeue"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
@@ -82,8 +83,22 @@ func runServer(cfgPath string) error {
 		slog.Info("config reloaded")
 	})
 
+	// 파서 레지스트리 구성
+	parserRegistry := parser.NewInMemoryParserRegistry()
+	parserRegistry.Register(parser.NewJSONParser())
+	parserRegistry.Register(parser.NewFormParser())
+	parserRegistry.Register(parser.NewXMLParser())
+	parserRegistry.Register(parser.NewLogfmtParser())
+
+	parserTypes := make(map[domain.InputType]string)
+	for _, inp := range cfg.Inputs {
+		if inp.Parser != "" {
+			parserTypes[domain.InputType(inp.Type)] = inp.Parser
+		}
+	}
+
 	// 애플리케이션 서비스
-	msgSvc := service.NewMessageService(repo, queue, nil, nil)
+	msgSvc := service.NewMessageService(repo, queue, parserTypes, parserRegistry)
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
 
 	// HTTP + WebSocket 어댑터 조립
