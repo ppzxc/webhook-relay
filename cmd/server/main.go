@@ -83,7 +83,7 @@ func runServer(cfgPath string) error {
 	})
 
 	// 애플리케이션 서비스
-	msgSvc := service.NewMessageService(repo, queue)
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
 
 	// HTTP + WebSocket 어댑터 조립

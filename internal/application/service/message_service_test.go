@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"relaybox/internal/adapter/input/parser"
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/application/service"
 	"relaybox/internal/domain"
@@ -45,8 +46,8 @@ func TestMessageService_Receive_Success(t *testing.T) {
 	var enqueued domain.Message
 	queue := &mockQueue{enqueueFn: func(_ context.Context, a domain.Message) error { enqueued = a; return nil }}
 
-	svc := service.NewMessageService(repo, queue)
-	id, err := svc.Receive(context.Background(), domain.InputTypeBeszel, []byte(`{"host":"srv1"}`))
+	svc := service.NewMessageService(repo, queue, nil, nil)
+	id, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1"}`))
 	if err != nil {
 		t.Fatalf("Receive() error: %v", err)
 	}
@@ -71,8 +72,76 @@ func TestMessageService_Receive_SaveError(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return errors.New("db err") }}
 	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
 
-	svc := service.NewMessageService(repo, queue)
-	if _, err := svc.Receive(context.Background(), domain.InputTypeBeszel, []byte(`{}`)); err == nil {
+	svc := service.NewMessageService(repo, queue, nil, nil)
+	if _, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{}`)); err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestMessageService_Receive_WithParser(t *testing.T) {
+	var saved domain.Message
+	repo := &mockRepo{saveFn: func(_ context.Context, a domain.Message) error { saved = a; return nil }}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+
+	registry := parser.NewInMemoryParserRegistry()
+	registry.Register(parser.NewJSONParser())
+
+	parserTypes := map[domain.InputType]string{
+		domain.InputTypeBeszel: "json",
+	}
+
+	svc := service.NewMessageService(repo, queue, parserTypes, registry)
+	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1","port":8080}`))
+	if err != nil {
+		t.Fatalf("Receive() error: %v", err)
+	}
+
+	if saved.ParsedData == nil {
+		t.Fatal("ParsedData should not be nil when parser is configured")
+	}
+	if saved.ParsedData["host"] != "srv1" {
+		t.Errorf("ParsedData[host] = %v, want srv1", saved.ParsedData["host"])
+	}
+}
+
+func TestMessageService_Receive_WithoutParser(t *testing.T) {
+	var saved domain.Message
+	repo := &mockRepo{saveFn: func(_ context.Context, a domain.Message) error { saved = a; return nil }}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+
+	svc := service.NewMessageService(repo, queue, nil, nil)
+	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1"}`))
+	if err != nil {
+		t.Fatalf("Receive() error: %v", err)
+	}
+
+	if saved.ParsedData != nil {
+		t.Errorf("ParsedData should be nil when no parser is configured, got %v", saved.ParsedData)
+	}
+}
+
+func TestMessageService_Receive_ParserFailsGracefully(t *testing.T) {
+	var saved domain.Message
+	repo := &mockRepo{saveFn: func(_ context.Context, a domain.Message) error { saved = a; return nil }}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+
+	registry := parser.NewInMemoryParserRegistry()
+	registry.Register(parser.NewJSONParser())
+
+	parserTypes := map[domain.InputType]string{
+		domain.InputTypeBeszel: "json",
+	}
+
+	svc := service.NewMessageService(repo, queue, parserTypes, registry)
+	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`not-json`))
+	if err != nil {
+		t.Fatalf("Receive() should succeed even when parser fails, got: %v", err)
+	}
+
+	if saved.ParsedData != nil {
+		t.Errorf("ParsedData should be nil when parser fails, got %v", saved.ParsedData)
+	}
+	if saved.Payload == nil {
+		t.Error("Payload should still be stored even when parser fails")
 	}
 }

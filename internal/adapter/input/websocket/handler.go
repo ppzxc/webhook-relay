@@ -52,7 +52,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request, inputType doma
 			}
 			return
 		}
-		if _, err := h.uc.Receive(r.Context(), inputType, msg); err != nil {
+		if _, err := h.uc.Receive(r.Context(), inputType, "application/json", msg); err != nil {
 			slog.Warn("receive via ws failed", "input", inputType, "err", err)
 		}
 	}

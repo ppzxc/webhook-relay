@@ -68,7 +68,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 		domain.OutputTypeWebhook: sender,
 	})
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
-	msgSvc := service.NewMessageService(repo, queue)
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
 
 	resolver := &configInputResolver{
@@ -138,7 +138,7 @@ func TestE2E_Healthz(t *testing.T) {
 	repo, _ := sqliteadapter.New(":memory:")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
-	msgSvc := service.NewMessageService(repo, queue)
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
 	resolver := &configInputResolver{}
 	router := httpadapter.NewRouter(msgSvc, resolver, nil)
 	srv := httptest.NewServer(router)

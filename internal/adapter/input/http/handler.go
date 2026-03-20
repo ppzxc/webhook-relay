@@ -55,7 +55,7 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messageID, err := h.uc.Receive(r.Context(), inputType, body)
+	messageID, err := h.uc.Receive(r.Context(), inputType, r.Header.Get("Content-Type"), body)
 	if err != nil {
 		mapError(w, r, err)
 		return

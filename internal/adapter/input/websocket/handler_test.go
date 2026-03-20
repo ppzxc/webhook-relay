@@ -15,7 +15,7 @@ import (
 
 type mockUseCase struct{ count atomic.Int32 }
 
-func (m *mockUseCase) Receive(_ context.Context, _ domain.InputType, _ []byte) (string, error) {
+func (m *mockUseCase) Receive(_ context.Context, _ domain.InputType, _ string, _ []byte) (string, error) {
 	m.count.Add(1)
 	return "test-id", nil
 }

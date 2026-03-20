@@ -20,12 +20,13 @@ func (r *RawPayload) UnmarshalJSON(b []byte) error {
 }
 
 type Message struct {
-	ID            string        `json:"id"`
-	Version       int           `json:"version"`
-	Input         InputType     `json:"input"`
-	Payload       RawPayload    `json:"payload"`
-	CreatedAt     time.Time     `json:"createdAt"`
-	Status        MessageStatus `json:"status"`
-	RetryCount    int           `json:"retryCount"`
-	LastAttemptAt *time.Time    `json:"lastAttemptAt,omitempty"`
+	ID            string         `json:"id"`
+	Version       int            `json:"version"`
+	Input         InputType      `json:"input"`
+	Payload       RawPayload     `json:"payload"`
+	ParsedData    map[string]any `json:"parsedData,omitempty"`
+	CreatedAt     time.Time      `json:"createdAt"`
+	Status        MessageStatus  `json:"status"`
+	RetryCount    int            `json:"retryCount"`
+	LastAttemptAt *time.Time     `json:"lastAttemptAt,omitempty"`
 }
