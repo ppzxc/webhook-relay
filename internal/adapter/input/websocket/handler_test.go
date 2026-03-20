@@ -41,3 +41,24 @@ func TestWebSocketHandler_ReceiveMessage(t *testing.T) {
 	}
 	conn.Close()
 }
+
+func TestWebSocketHandler_CrossOriginRejected(t *testing.T) {
+	uc := &mockUseCase{}
+	handler := wsadapter.NewHandler(uc)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeWS(w, r, domain.SourceTypeBeszel)
+	}))
+	defer srv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	header := http.Header{}
+	header.Set("Origin", "http://evil.example.com")
+	_, resp, err := gws.DefaultDialer.Dial(wsURL, header)
+	if err == nil {
+		t.Fatal("expected cross-origin connection to be rejected")
+	}
+	if resp != nil && resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
+	}
+}

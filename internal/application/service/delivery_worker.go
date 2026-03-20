@@ -74,10 +74,16 @@ func (w *DeliveryWorker) processOne(ctx context.Context) error {
 		if err := ack(); err != nil {
 			slog.Warn("ack failed", "alertID", alert.ID, "err", err)
 		}
-		_ = w.repo.UpdateDeliveryState(ctx, alert.ID, domain.AlertStatusDelivered, alert.RetryCount, now)
+		if err := w.repo.UpdateDeliveryState(ctx, alert.ID, domain.AlertStatusDelivered, alert.RetryCount, now); err != nil {
+			slog.Error("failed to update delivery state to delivered", "alertID", alert.ID, "err", err)
+		}
 	} else {
-		_ = nack()
-		_ = w.repo.UpdateDeliveryState(ctx, alert.ID, domain.AlertStatusFailed, alert.RetryCount+1, now)
+		if err := nack(); err != nil {
+			slog.Warn("nack failed", "alertID", alert.ID, "err", err)
+		}
+		if err := w.repo.UpdateDeliveryState(ctx, alert.ID, domain.AlertStatusFailed, alert.RetryCount+1, now); err != nil {
+			slog.Error("failed to update delivery state to failed", "alertID", alert.ID, "err", err)
+		}
 	}
 	return nil
 }
