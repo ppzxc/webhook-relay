@@ -11,6 +11,9 @@ log:
   level: info    # debug, info, warn, error
   format: json   # json, text
 
+expression:
+  defaultEngine: cel  # cel or expr
+
 inputs:
   - id: beszel
     type: BESZEL
@@ -18,24 +21,30 @@ inputs:
     secret: "change-me"
   - id: dozzle
     type: DOZZLE
-    parser: json      # json, form, xml, logfmt, regex
+    parser: json
     secret: "change-me"
 
 outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: "https://hooks.example.com/xyz"
-    template: |
-      {"text": "{{ .Source }}: {{ .Payload }}"}
+    template:
+      text: 'input + ": " + payload'
     retryCount: 3
     retryDelayMs: 1000
     skipTLSVerify: false
 
 rules:
   - inputId: beszel
-    outputIds: [ops-webhook]
+    engine: cel           # override default engine per rule
+    filter: 'input == "BESZEL"'
+    mapping:
+      severity: '"HIGH"'
+    routing:
+      - condition: 'severity == "HIGH"'
+        outputIds: [ops-webhook]
   - inputId: dozzle
-    outputIds: [ops-webhook]
+    outputIds: [ops-webhook]  # simple: no filter/routing, send to all
 
 storage:
   type: SQLITE

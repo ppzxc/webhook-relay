@@ -8,10 +8,15 @@ import (
 	"relaybox/internal/domain"
 )
 
+type ruleEntry struct {
+	rule    domain.Rule
+	outputs []domain.Output
+}
+
+// InMemoryRuleConfigReader implements output.RuleConfigReader.
 type InMemoryRuleConfigReader struct {
-	mu      sync.RWMutex
-	outputs map[string]domain.Output
-	rules   map[string][]string
+	mu    sync.RWMutex
+	rules map[string]ruleEntry // keyed by input type (e.g. "BESZEL")
 }
 
 func NewInMemoryRuleConfigReader(cfg *Config) *InMemoryRuleConfigReader {
@@ -21,47 +26,79 @@ func NewInMemoryRuleConfigReader(cfg *Config) *InMemoryRuleConfigReader {
 }
 
 func (r *InMemoryRuleConfigReader) Update(cfg *Config) {
-	outputs := make(map[string]domain.Output, len(cfg.Outputs))
+	outputsByID := make(map[string]domain.Output, len(cfg.Outputs))
 	for _, c := range cfg.Outputs {
-		outputs[c.ID] = domain.Output{
+		outputsByID[c.ID] = domain.Output{
 			ID: c.ID, Type: domain.OutputType(c.Type), URL: c.URL,
-			Template: c.Template, RetryCount: c.RetryCount,
-			RetryDelayMs: c.RetryDelayMs, TimeoutSec: c.TimeoutSec,
-			SkipTLSVerify: c.SkipTLSVerify,
+			Template: c.Template, Secret: c.Secret,
+			RetryCount: c.RetryCount, RetryDelayMs: c.RetryDelayMs,
+			TimeoutSec: c.TimeoutSec, SkipTLSVerify: c.SkipTLSVerify,
 		}
 	}
-	// inputID → inputType mapping (e.g. "beszel" → "BESZEL")
+
+	// inputID -> inputType mapping (e.g. "beszel" -> "BESZEL")
 	inputTypeByID := make(map[string]string, len(cfg.Inputs))
 	for _, s := range cfg.Inputs {
 		inputTypeByID[s.ID] = s.Type
 	}
-	// Rules keyed by input type so relay worker can query with msg.Input
-	rules := make(map[string][]string, len(cfg.Rules))
+
+	rules := make(map[string]ruleEntry, len(cfg.Rules))
 	for _, rt := range cfg.Rules {
 		key := inputTypeByID[rt.InputID]
 		if key == "" {
 			key = rt.InputID // fallback
 		}
-		rules[key] = rt.OutputIDs
+
+		// Build routing conditions
+		var routing []domain.RouteCondition
+		for _, rc := range rt.Routing {
+			routing = append(routing, domain.RouteCondition{
+				Condition: rc.Condition,
+				OutputIDs: rc.OutputIDs,
+			})
+		}
+
+		rule := domain.Rule{
+			InputID: rt.InputID,
+			Engine:  rt.Engine,
+			Filter:  rt.Filter,
+			Mapping: rt.Mapping,
+			Routing: routing,
+		}
+
+		// Collect outputs from outputIds (backward compat) and routing
+		outputIDSet := make(map[string]struct{})
+		for _, id := range rt.OutputIDs {
+			outputIDSet[id] = struct{}{}
+		}
+		for _, rc := range rt.Routing {
+			for _, id := range rc.OutputIDs {
+				outputIDSet[id] = struct{}{}
+			}
+		}
+
+		var outputs []domain.Output
+		for id := range outputIDSet {
+			if out, ok := outputsByID[id]; ok {
+				outputs = append(outputs, out)
+			}
+		}
+
+		rules[key] = ruleEntry{rule: rule, outputs: outputs}
 	}
+
 	r.mu.Lock()
-	r.outputs = outputs
 	r.rules = rules
 	r.mu.Unlock()
 }
 
-func (r *InMemoryRuleConfigReader) GetOutputs(_ context.Context, inputID string) ([]domain.Output, error) {
+// GetRule returns the rule and associated outputs for a given input type.
+func (r *InMemoryRuleConfigReader) GetRule(_ context.Context, inputType string) (domain.Rule, []domain.Output, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	ids, ok := r.rules[inputID]
+	entry, ok := r.rules[inputType]
 	if !ok {
-		return nil, fmt.Errorf("rule for %q: %w", inputID, domain.ErrInputNotFound)
+		return domain.Rule{}, nil, fmt.Errorf("rule for %q: %w", inputType, domain.ErrInputNotFound)
 	}
-	result := make([]domain.Output, 0, len(ids))
-	for _, id := range ids {
-		if out, ok := r.outputs[id]; ok {
-			result = append(result, out)
-		}
-	}
-	return result, nil
+	return entry.rule, entry.outputs, nil
 }

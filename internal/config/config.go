@@ -6,7 +6,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
-	"relaybox/internal/domain"
 )
 
 type ServerConfig struct {
@@ -36,19 +35,29 @@ type InputConfig struct {
 }
 
 type OutputConfig struct {
-	ID            string `mapstructure:"id"`
-	Type          string `mapstructure:"type"`
-	URL           string `mapstructure:"url"`
-	Template      string `mapstructure:"template"`
-	RetryCount    int    `mapstructure:"retryCount"`
-	RetryDelayMs  int    `mapstructure:"retryDelayMs"`
-	TimeoutSec    int    `mapstructure:"timeoutSec"`
-	SkipTLSVerify bool   `mapstructure:"skipTLSVerify"`
+	ID            string            `mapstructure:"id"`
+	Type          string            `mapstructure:"type"`
+	URL           string            `mapstructure:"url"`
+	Template      map[string]string `mapstructure:"template"`
+	Secret        string            `mapstructure:"secret"`
+	RetryCount    int               `mapstructure:"retryCount"`
+	RetryDelayMs  int               `mapstructure:"retryDelayMs"`
+	TimeoutSec    int               `mapstructure:"timeoutSec"`
+	SkipTLSVerify bool              `mapstructure:"skipTLSVerify"`
+}
+
+type RouteConditionConfig struct {
+	Condition string   `mapstructure:"condition"`
+	OutputIDs []string `mapstructure:"outputIds"`
 }
 
 type RuleConfig struct {
-	InputID   string   `mapstructure:"inputId"`
-	OutputIDs []string `mapstructure:"outputIds"`
+	InputID   string                 `mapstructure:"inputId"`
+	OutputIDs []string               `mapstructure:"outputIds"`
+	Engine    string                 `mapstructure:"engine"`
+	Filter    string                 `mapstructure:"filter"`
+	Mapping   map[string]string      `mapstructure:"mapping"`
+	Routing   []RouteConditionConfig `mapstructure:"routing"`
 }
 
 type StorageConfig struct {
@@ -62,17 +71,22 @@ type QueueConfig struct {
 	WorkerCount int    `mapstructure:"workerCount"`
 }
 
-type Config struct {
-	Server  ServerConfig   `mapstructure:"server"`
-	Log     LogConfig      `mapstructure:"log"`
-	Inputs  []InputConfig  `mapstructure:"inputs"`
-	Outputs []OutputConfig `mapstructure:"outputs"`
-	Rules   []RuleConfig   `mapstructure:"rules"`
-	Storage StorageConfig  `mapstructure:"storage"`
-	Queue   QueueConfig    `mapstructure:"queue"`
+type ExpressionConfig struct {
+	DefaultEngine string `mapstructure:"defaultEngine"` // "cel" or "expr"
 }
 
-// Load 설정 파일을 읽어 Config를 반환한다. 템플릿 검증 포함.
+type Config struct {
+	Server     ServerConfig     `mapstructure:"server"`
+	Log        LogConfig        `mapstructure:"log"`
+	Inputs     []InputConfig    `mapstructure:"inputs"`
+	Outputs    []OutputConfig   `mapstructure:"outputs"`
+	Rules      []RuleConfig     `mapstructure:"rules"`
+	Storage    StorageConfig    `mapstructure:"storage"`
+	Queue      QueueConfig      `mapstructure:"queue"`
+	Expression ExpressionConfig `mapstructure:"expression"`
+}
+
+// Load reads and validates the config file.
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -83,7 +97,7 @@ func Load(path string) (*Config, error) {
 	return unmarshalAndValidate(v)
 }
 
-// Watch 설정 파일 변경 감지. outputs/rules만 핫리로드. 유효하지 않으면 기존 유지.
+// Watch detects config file changes. Only outputs/rules are hot-reloaded.
 func Watch(v *viper.Viper, onChange func(cfg *Config)) {
 	v.WatchConfig()
 	v.OnConfigChange(func(_ fsnotify.Event) {
@@ -96,7 +110,7 @@ func Watch(v *viper.Viper, onChange func(cfg *Config)) {
 	})
 }
 
-// NewViper path에서 viper 인스턴스를 반환한다 (Watch용).
+// NewViper returns a viper instance for Watch.
 func NewViper(path string) (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -123,14 +137,6 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 	}
 	if err := validateIDs(&cfg); err != nil {
 		return nil, err
-	}
-	for _, out := range cfg.Outputs {
-		if out.Template == "" {
-			continue
-		}
-		if err := domain.ValidateTemplate(out.Template); err != nil {
-			return nil, fmt.Errorf("output %q: %w", out.ID, err)
-		}
 	}
 	return &cfg, nil
 }

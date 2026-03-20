@@ -17,11 +17,7 @@ type Sender struct{}
 
 func NewSender() *Sender { return &Sender{} }
 
-func (s *Sender) Send(ctx context.Context, out domain.Output, msg domain.Message) error {
-	body, err := domain.RenderTemplate(out.Template, msg)
-	if err != nil {
-		return fmt.Errorf("render: %w", err)
-	}
+func (s *Sender) Send(ctx context.Context, out domain.Output, payload []byte) error {
 	timeoutSec := out.TimeoutSec
 	if timeoutSec <= 0 {
 		timeoutSec = defaultTimeoutSec
@@ -30,7 +26,7 @@ func (s *Sender) Send(ctx context.Context, out domain.Output, msg domain.Message
 	if out.SkipTLSVerify {
 		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, out.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, out.URL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

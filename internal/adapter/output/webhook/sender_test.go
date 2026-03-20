@@ -13,12 +13,11 @@ import (
 	"relaybox/internal/domain"
 )
 
-// 컴파일 타임 인터페이스 검증
+// compile-time interface check
 var _ output.OutputSender = (*webhook.Sender)(nil)
 var _ output.OutputRegistry = (*webhook.Registry)(nil)
 
 func TestSender_Timeout(t *testing.T) {
-	// 응답이 매우 늦은 서버 — 클라이언트 타임아웃이 없으면 무한 대기
 	quit := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -33,11 +32,10 @@ func TestSender_Timeout(t *testing.T) {
 	})
 
 	sender := webhook.NewSender()
-	out := domain.Output{URL: srv.URL, Template: `{}`, TimeoutSec: 1}
-	msg := domain.Message{ID: "t1", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Version: 1}
+	out := domain.Output{URL: srv.URL, TimeoutSec: 1}
 
 	start := time.Now()
-	err := sender.Send(context.Background(), out, msg)
+	err := sender.Send(context.Background(), out, []byte(`{}`))
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -55,10 +53,10 @@ func TestSender_Send(t *testing.T) {
 	defer srv.Close()
 
 	sender := webhook.NewSender()
-	out := domain.Output{URL: srv.URL, Template: `{"text":"{{ .Source }}"}`}
-	msg := domain.Message{ID: "a1", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Version: 1}
+	out := domain.Output{URL: srv.URL}
+	payload := []byte(`{"text":"BESZEL"}`)
 
-	if err := sender.Send(context.Background(), out, msg); err != nil {
+	if err := sender.Send(context.Background(), out, payload); err != nil {
 		t.Fatalf("Send() error: %v", err)
 	}
 	if string(received) != `{"text":"BESZEL"}` {

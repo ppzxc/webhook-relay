@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	httpadapter "relaybox/internal/adapter/input/http"
+	"relaybox/internal/adapter/output/expression"
 	"relaybox/internal/adapter/output/filequeue"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
 	webhookadapter "relaybox/internal/adapter/output/webhook"
@@ -22,7 +22,7 @@ import (
 	"relaybox/internal/domain"
 )
 
-// configInputResolver는 cmd/server/main.go와 동일한 로직을 E2E에서 재구현 (DI 검증용)
+// configInputResolver replicates cmd/server/main.go logic for E2E DI
 type configInputResolver struct {
 	inputs  map[string]domain.InputType
 	secrets map[string]string
@@ -40,8 +40,15 @@ func (r *configInputResolver) ValidateToken(id, token string) bool {
 	return r.secrets[id] == token
 }
 
+func newExprRegistry() output.ExpressionEngineRegistry {
+	reg := expression.NewInMemoryExpressionEngineRegistry()
+	reg.Register(expression.NewCELEngine())
+	reg.Register(expression.NewExprEngine())
+	return reg
+}
+
 func TestE2E_PostMessage_Returns201(t *testing.T) {
-	// 아웃바운드 웹훅 수신 서버
+	// Outbound webhook receiver
 	var mu sync.Mutex
 	var deliveredPayload []byte
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +61,16 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	defer targetSrv.Close()
 
 	cfg := &cfgpkg.Config{
-		Inputs:  []cfgpkg.InputConfig{{ID: "beszel", Type: "BESZEL", Secret: "tok"}},
-		Outputs: []cfgpkg.OutputConfig{{ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL, Template: `{"src":"{{ .Source }}"}`, RetryCount: 1, RetryDelayMs: 10}},
-		Rules:   []cfgpkg.RuleConfig{{InputID: "beszel", OutputIDs: []string{"ch1"}}},
-		Queue:   cfgpkg.QueueConfig{WorkerCount: 1},
+		Inputs: []cfgpkg.InputConfig{{ID: "beszel", Type: "BESZEL", Secret: "tok"}},
+		Outputs: []cfgpkg.OutputConfig{{
+			ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL,
+			Template: map[string]string{
+				"src": `input`,
+			},
+			RetryCount: 1, RetryDelayMs: 10,
+		}},
+		Rules: []cfgpkg.RuleConfig{{InputID: "beszel", OutputIDs: []string{"ch1"}}},
+		Queue: cfgpkg.QueueConfig{WorkerCount: 1},
 	}
 
 	repo, _ := sqliteadapter.New(":memory:")
@@ -69,7 +82,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	})
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
 
 	resolver := &configInputResolver{
 		inputs:  map[string]domain.InputType{"beszel": domain.InputTypeBeszel},
@@ -83,7 +96,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	defer cancel()
 	worker.Start(ctx, 1)
 
-	// POST メッセージ
+	// POST message
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/inputs/beszel/messages",
 		strings.NewReader(`{"host":"server1"}`))
 	req.Header.Set("Authorization", "Bearer tok")
@@ -108,7 +121,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 		t.Errorf("body status = %v, want PENDING", body["status"])
 	}
 
-	// RelayWorker가 전달 완료할 때까지 대기
+	// Wait for relay worker to deliver
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
@@ -128,9 +141,13 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	if len(got) == 0 {
 		t.Error("relay worker did not deliver the message")
 	}
-	want := fmt.Sprintf(`{"src":"%s"}`, string(domain.InputTypeBeszel))
-	if string(got) != want {
-		t.Errorf("delivered payload = %q, want %q", got, want)
+	// Template is {"src": input} which evaluates to {"src":"BESZEL"}
+	var result map[string]any
+	if err := json.Unmarshal(got, &result); err != nil {
+		t.Fatalf("unmarshal delivered payload: %v", err)
+	}
+	if result["src"] != string(domain.InputTypeBeszel) {
+		t.Errorf("delivered src = %v, want %s", result["src"], domain.InputTypeBeszel)
 	}
 }
 

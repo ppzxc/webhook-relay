@@ -6,6 +6,7 @@ import (
 	"relaybox/internal/domain"
 )
 
+// RuleConfigReader returns the rule and associated outputs for a given input type.
 type RuleConfigReader interface {
-	GetOutputs(ctx context.Context, inputID string) ([]domain.Output, error)
+	GetRule(ctx context.Context, inputType string) (domain.Rule, []domain.Output, error)
 }

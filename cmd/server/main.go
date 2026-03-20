@@ -14,6 +14,7 @@ import (
 	httpadapter "relaybox/internal/adapter/input/http"
 	"relaybox/internal/adapter/input/parser"
 	wsadapter "relaybox/internal/adapter/input/websocket"
+	"relaybox/internal/adapter/output/expression"
 	"relaybox/internal/adapter/output/filequeue"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
 	webhookadapter "relaybox/internal/adapter/output/webhook"
@@ -53,7 +54,7 @@ func runServer(cfgPath string) error {
 	}
 	setupLogger(cfg)
 
-	// 아웃바운드 어댑터
+	// Outbound adapters
 	repo, err := sqliteadapter.New(cfg.Storage.Path)
 	if err != nil {
 		return fmt.Errorf("init sqlite: %w", err)
@@ -70,10 +71,22 @@ func runServer(cfgPath string) error {
 		domain.OutputTypeWebhook: sender,
 	})
 
-	// 설정 기반 라우팅 (핫리로드 지원)
+	// Expression engine registry
+	exprRegistry := expression.NewInMemoryExpressionEngineRegistry()
+	celEngine := expression.NewCELEngine()
+	exprEngine := expression.NewExprEngine()
+	exprRegistry.Register(celEngine)
+	exprRegistry.Register(exprEngine)
+	if cfg.Expression.DefaultEngine != "" {
+		if err := exprRegistry.SetDefault(cfg.Expression.DefaultEngine); err != nil {
+			return fmt.Errorf("set default expression engine: %w", err)
+		}
+	}
+
+	// Config-based routing (hot-reload support)
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
 
-	// Viper WatchConfig → 핫리로드
+	// Viper WatchConfig -> hot-reload
 	v, err := cfgpkg.NewViper(cfgPath)
 	if err != nil {
 		return fmt.Errorf("init viper: %w", err)
@@ -83,7 +96,7 @@ func runServer(cfgPath string) error {
 		slog.Info("config reloaded")
 	})
 
-	// 파서 레지스트리 구성
+	// Parser registry
 	parserRegistry := parser.NewInMemoryParserRegistry()
 	parserRegistry.Register(parser.NewJSONParser())
 	parserRegistry.Register(parser.NewFormParser())
@@ -107,11 +120,11 @@ func runServer(cfgPath string) error {
 		parserTypes[domain.InputType(inp.Type)] = parserKey
 	}
 
-	// 애플리케이션 서비스
+	// Application services
 	msgSvc := service.NewMessageService(repo, queue, parserTypes, parserRegistry)
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry)
 
-	// HTTP + WebSocket 어댑터 조립
+	// HTTP + WebSocket adapter assembly
 	resolver := newConfigInputResolver(cfg)
 	wsHandler := wsadapter.NewHandler(msgSvc)
 	router := httpadapter.NewRouter(msgSvc, resolver, wsHandler)
@@ -154,7 +167,7 @@ func runServer(cfgPath string) error {
 	return srv.Shutdown(shutCtx)
 }
 
-// configInputResolver Config 기반 InputResolver 구현
+// configInputResolver Config-based InputResolver implementation
 type configInputResolver struct {
 	inputs  map[string]domain.InputType
 	secrets map[string]string

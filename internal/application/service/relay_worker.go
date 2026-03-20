@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -12,11 +13,12 @@ import (
 )
 
 type RelayWorker struct {
-	queue      output.MessageQueue
-	repo       output.MessageRepository
-	ruleReader output.RuleConfigReader
-	registry   output.OutputRegistry
-	wg         sync.WaitGroup
+	queue        output.MessageQueue
+	repo         output.MessageRepository
+	ruleReader   output.RuleConfigReader
+	registry     output.OutputRegistry
+	exprRegistry output.ExpressionEngineRegistry
+	wg           sync.WaitGroup
 }
 
 func NewRelayWorker(
@@ -24,8 +26,12 @@ func NewRelayWorker(
 	repo output.MessageRepository,
 	ruleReader output.RuleConfigReader,
 	registry output.OutputRegistry,
+	exprRegistry output.ExpressionEngineRegistry,
 ) *RelayWorker {
-	return &RelayWorker{queue: queue, repo: repo, ruleReader: ruleReader, registry: registry}
+	return &RelayWorker{
+		queue: queue, repo: repo, ruleReader: ruleReader,
+		registry: registry, exprRegistry: exprRegistry,
+	}
 }
 
 func (w *RelayWorker) Start(ctx context.Context, workerCount int) {
@@ -64,15 +70,83 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 		return err
 	}
 
-	outputs, err := w.ruleReader.GetOutputs(ctx, string(msg.Input))
+	rule, outputs, err := w.ruleReader.GetRule(ctx, string(msg.Input))
 	if err != nil {
 		_ = nack()
-		return fmt.Errorf("get outputs: %w", err)
+		return fmt.Errorf("get rule: %w", err)
 	}
 
+	// Build evaluation data from message
+	data := buildEvalData(msg)
+
+	// Get expression engine
+	engine, err := w.getEngine(rule.Engine)
+	if err != nil {
+		_ = nack()
+		return fmt.Errorf("get engine: %w", err)
+	}
+
+	// 1. Filter: skip if filter expression evaluates to false
+	if rule.Filter != "" {
+		pass, err := engine.EvaluateBool(rule.Filter, data)
+		if err != nil {
+			slog.Warn("filter evaluation failed", "messageID", msg.ID, "err", err)
+			_ = nack()
+			return err
+		}
+		if !pass {
+			_ = ack() // message processed but filtered out
+			return nil
+		}
+	}
+
+	// 2. Mapping: apply mapping expressions to enrich data
+	mappedData := copyMap(data)
+	for key, expr := range rule.Mapping {
+		val, err := engine.Evaluate(expr, data)
+		if err != nil {
+			slog.Warn("mapping evaluation failed", "messageID", msg.ID, "key", key, "err", err)
+			continue
+		}
+		mappedData[key] = val
+	}
+
+	// 3. Routing: evaluate conditions to determine which outputs to use
+	var routedOutputs []domain.Output
+	if len(rule.Routing) == 0 {
+		// No routing conditions = send to all outputs
+		routedOutputs = outputs
+	} else {
+		outputsByID := make(map[string]domain.Output, len(outputs))
+		for _, o := range outputs {
+			outputsByID[o.ID] = o
+		}
+		for _, rc := range rule.Routing {
+			match, err := engine.EvaluateBool(rc.Condition, mappedData)
+			if err != nil {
+				slog.Warn("routing condition failed", "messageID", msg.ID, "condition", rc.Condition, "err", err)
+				continue
+			}
+			if match {
+				for _, oid := range rc.OutputIDs {
+					if o, ok := outputsByID[oid]; ok {
+						routedOutputs = append(routedOutputs, o)
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Deliver to each routed output
 	success := true
-	for _, out := range outputs {
-		if err := w.deliver(ctx, out, msg); err != nil {
+	for _, out := range routedOutputs {
+		payload, err := w.buildPayload(engine, out.Template, mappedData)
+		if err != nil {
+			slog.Warn("payload build failed", "messageID", msg.ID, "output", out.ID, "err", err)
+			success = false
+			continue
+		}
+		if err := w.deliver(ctx, out, payload); err != nil {
 			slog.Warn("delivery failed", "messageID", msg.ID, "output", out.ID, "err", err)
 			success = false
 		}
@@ -97,7 +171,7 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 	return nil
 }
 
-func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, msg domain.Message) error {
+func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, payload []byte) error {
 	sender, err := w.registry.Get(out.Type)
 	if err != nil {
 		return fmt.Errorf("get sender: %w", err)
@@ -111,7 +185,7 @@ func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, msg domain
 	}
 	var lastErr error
 	for i := range retryCount {
-		if err := sender.Send(ctx, out, msg); err == nil {
+		if err := sender.Send(ctx, out, payload); err == nil {
 			return nil
 		} else {
 			lastErr = err
@@ -124,4 +198,53 @@ func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, msg domain
 		}
 	}
 	return fmt.Errorf("retries exhausted: %w", lastErr)
+}
+
+func buildEvalData(msg domain.Message) map[string]any {
+	data := map[string]any{
+		"id":        msg.ID,
+		"input":     string(msg.Input),
+		"payload":   string(msg.Payload),
+		"createdAt": msg.CreatedAt.Format(time.RFC3339),
+		"status":    string(msg.Status),
+	}
+	// Merge ParsedData fields
+	for k, v := range msg.ParsedData {
+		data[k] = v
+	}
+	return data
+}
+
+func (w *RelayWorker) buildPayload(engine output.ExpressionEngine, template map[string]string, data map[string]any) ([]byte, error) {
+	if len(template) == 0 {
+		// No template = use raw payload
+		if raw, ok := data["payload"].(string); ok {
+			return []byte(raw), nil
+		}
+		return []byte("{}"), nil
+	}
+	result := make(map[string]any, len(template))
+	for key, expr := range template {
+		val, err := engine.Evaluate(expr, data)
+		if err != nil {
+			return nil, fmt.Errorf("template key %q: %w", key, err)
+		}
+		result[key] = val
+	}
+	return json.Marshal(result)
+}
+
+func (w *RelayWorker) getEngine(engineType string) (output.ExpressionEngine, error) {
+	if engineType == "" {
+		return w.exprRegistry.Default(), nil
+	}
+	return w.exprRegistry.Get(engineType)
+}
+
+func copyMap(m map[string]any) map[string]any {
+	cp := make(map[string]any, len(m))
+	for k, v := range m {
+		cp[k] = v
+	}
+	return cp
 }

@@ -22,7 +22,8 @@ outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: https://hooks.example.com/test
-    template: '{"text":"{{ .Source }}"}'
+    template:
+      text: 'input + ": " + payload'
     retryCount: 3
     retryDelayMs: 500
 rules:
@@ -62,21 +63,8 @@ func TestLoad(t *testing.T) {
 	if len(cfg.Rules) != 1 {
 		t.Errorf("rules = %+v", cfg.Rules)
 	}
-}
-
-func TestLoad_InvalidTemplate(t *testing.T) {
-	yaml := `
-server:
-  port: 8080
-outputs:
-  - id: bad
-    type: WEBHOOK
-    url: https://example.com
-    template: '{{ .Source'
-`
-	_, err := config.Load(writeConfig(t, yaml))
-	if err == nil {
-		t.Fatal("expected error for invalid template")
+	if cfg.Outputs[0].Template["text"] != `input + ": " + payload` {
+		t.Errorf("template = %+v", cfg.Outputs[0].Template)
 	}
 }
 
@@ -119,7 +107,6 @@ outputs:
   - id: ch1
     type: WEBHOOK
     url: https://example.com
-    template: '{}'
 rules:
   - inputId: beszel
     outputIds:
@@ -135,11 +122,78 @@ func TestInMemoryRuleConfigReader(t *testing.T) {
 	cfg, _ := config.Load(writeConfig(t, testYAML))
 	reader := config.NewInMemoryRuleConfigReader(cfg)
 
-	outputs, err := reader.GetOutputs(nil, "BESZEL") // query by input type, not input ID
+	rule, outputs, err := reader.GetRule(nil, "BESZEL")
 	if err != nil {
-		t.Fatalf("GetOutputs error: %v", err)
+		t.Fatalf("GetRule error: %v", err)
 	}
 	if len(outputs) != 1 {
 		t.Errorf("got %d outputs, want 1", len(outputs))
+	}
+	if rule.InputID != "beszel" {
+		t.Errorf("rule.InputID = %q, want beszel", rule.InputID)
+	}
+}
+
+func TestLoad_WithExpressionConfig(t *testing.T) {
+	yaml := `
+expression:
+  defaultEngine: expr
+inputs:
+  - id: beszel
+    type: BESZEL
+    secret: s
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    url: https://example.com
+rules:
+  - inputId: beszel
+    engine: expr
+    filter: 'status == "CRITICAL"'
+    mapping:
+      severity: '"HIGH"'
+    routing:
+      - condition: 'severity == "HIGH"'
+        outputIds: [ch1]
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Expression.DefaultEngine != "expr" {
+		t.Errorf("defaultEngine = %q, want expr", cfg.Expression.DefaultEngine)
+	}
+	if cfg.Rules[0].Engine != "expr" {
+		t.Errorf("rule engine = %q, want expr", cfg.Rules[0].Engine)
+	}
+	if cfg.Rules[0].Filter != `status == "CRITICAL"` {
+		t.Errorf("filter = %q", cfg.Rules[0].Filter)
+	}
+	if len(cfg.Rules[0].Routing) != 1 {
+		t.Errorf("routing len = %d, want 1", len(cfg.Rules[0].Routing))
+	}
+
+	reader := config.NewInMemoryRuleConfigReader(cfg)
+	rule, outputs, err := reader.GetRule(nil, "BESZEL")
+	if err != nil {
+		t.Fatalf("GetRule error: %v", err)
+	}
+	if rule.Engine != "expr" {
+		t.Errorf("rule.Engine = %q, want expr", rule.Engine)
+	}
+	if rule.Filter != `status == "CRITICAL"` {
+		t.Errorf("rule.Filter = %q", rule.Filter)
+	}
+	if len(rule.Routing) != 1 {
+		t.Errorf("rule.Routing len = %d", len(rule.Routing))
+	}
+	if len(outputs) != 1 {
+		t.Errorf("outputs len = %d, want 1", len(outputs))
 	}
 }
