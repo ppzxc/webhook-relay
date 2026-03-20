@@ -30,7 +30,7 @@ func main() {
 
 func rootCmd() *cobra.Command {
 	var cfgPath string
-	root := &cobra.Command{Use: "relaybox", Short: "Monitoring alert relay hub"}
+	root := &cobra.Command{Use: "relaybox", Short: "Generic relay hub — receives any inbound message, routes to outbound channels"}
 	start := &cobra.Command{
 		Use:   "start",
 		Short: "Start server",

@@ -1,6 +1,6 @@
 # relaybox
 
-Generic relay hub: receives any inbound protocol/format, applies CEL/Expr expression filter/transform/route rules, and delivers to outbound channels.
+Generic relay hub: receives any inbound protocol/format and delivers to outbound channels (CEL/Expr expression filter/transform/route rules planned).
 
 ```
 any inbound (HTTP REST / WebSocket / TCP / ...)
@@ -13,7 +13,7 @@ any outbound (Webhook / Slack / Discord / ...)
 ## Features
 
 - **Multi-protocol inbound** — HTTP REST + WebSocket (TCP planned)
-- **Expression-based routing** — CEL/Expr filter and transform rules per route
+- **Expression-based routing** — CEL/Expr filter and transform rules per route (planned)
 - **Template transformation** — Go `text/template` payload rendering
 - **at-least-once delivery** — file-queue backed, survives restarts
 - **Exponential backoff retry** — per-channel `retryCount` / `retryDelayMs`
