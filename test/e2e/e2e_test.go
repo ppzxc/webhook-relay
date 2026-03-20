@@ -86,7 +86,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	})
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 
 	resolver := &configInputResolver{
 		inputs:  map[string]domain.InputType{"beszel": domain.InputTypeBeszel},

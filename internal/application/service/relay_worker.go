@@ -18,6 +18,7 @@ type RelayWorker struct {
 	ruleReader   output.RuleConfigReader
 	registry     output.OutputRegistry
 	exprRegistry output.ExpressionEngineRegistry
+	cfg          RelayWorkerConfig
 	wg           sync.WaitGroup
 }
 
@@ -27,10 +28,12 @@ func NewRelayWorker(
 	ruleReader output.RuleConfigReader,
 	registry output.OutputRegistry,
 	exprRegistry output.ExpressionEngineRegistry,
+	cfg RelayWorkerConfig,
 ) *RelayWorker {
 	return &RelayWorker{
 		queue: queue, repo: repo, ruleReader: ruleReader,
 		registry: registry, exprRegistry: exprRegistry,
+		cfg: cfg.withDefaults(),
 	}
 }
 
@@ -57,7 +60,7 @@ func (w *RelayWorker) loop(ctx context.Context) {
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(500 * time.Millisecond):
+				case <-time.After(w.cfg.PollBackoff):
 				}
 			}
 		}
@@ -190,10 +193,10 @@ func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, payload []
 	}
 	retryCount, delayMs := out.RetryCount, out.RetryDelayMs
 	if retryCount <= 0 {
-		retryCount = 3
+		retryCount = w.cfg.DefaultRetryCount
 	}
 	if delayMs <= 0 {
-		delayMs = 1000
+		delayMs = w.cfg.DefaultRetryDelayMs
 	}
 	var lastErr error
 	for i := range retryCount {
