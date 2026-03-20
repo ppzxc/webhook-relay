@@ -93,3 +93,29 @@ func TestDeliveryWorker_DeliverSuccess(t *testing.T) {
 		t.Error("expected at least one send call")
 	}
 }
+
+func TestDeliveryWorker_GracefulShutdown(t *testing.T) {
+	// ctx 취소 후 Wait()이 반환되어야 한다 (타임아웃 없이)
+	queue := &mockAlertQueue{}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Alert) error { return nil }}
+	routeReader := &mockRouteReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := service.NewDeliveryWorker(queue, repo, routeReader, registry)
+	worker.Start(ctx, 2)
+
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		worker.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		// 정상 종료
+	case <-time.After(2 * time.Second):
+		t.Fatal("Wait() did not return after context cancellation")
+	}
+}

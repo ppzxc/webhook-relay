@@ -116,6 +116,7 @@ func runServer(cfgPath string) error {
 	<-sig
 	slog.Info("shutting down")
 	cancel()
+	worker.Wait()
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutCancel()
 	return srv.Shutdown(shutCtx)
