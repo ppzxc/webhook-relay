@@ -17,8 +17,8 @@ any outbound (Webhook / Slack / Discord / ...)
 - **Template transformation** — Go `text/template` payload rendering
 - **at-least-once delivery** — file-queue backed, survives restarts
 - **Exponential backoff retry** — per-channel `retryCount` / `retryDelayMs`
-- **Hot config reload** — change channels / routes without restart
-- **Bearer token auth** — per-source independent secrets
+- **Hot config reload** — change outputs / rules without restart
+- **Bearer token auth** — per-input independent secrets
 
 ## Quick Start
 
@@ -51,12 +51,12 @@ log:
   level: info    # debug | info | warn | error
   format: json   # json | text
 
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: "your-secret"
 
-channels:
+outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: "https://hooks.example.com/xyz"
@@ -64,9 +64,9 @@ channels:
     retryCount: 3
     retryDelayMs: 1000
 
-routes:
-  - sourceId: beszel
-    channelIds: [ops-webhook]
+rules:
+  - inputId: beszel
+    outputIds: [ops-webhook]
 
 storage:
   type: SQLITE
@@ -89,10 +89,10 @@ queue:
 
 ## API
 
-### Receive Alert
+### Receive Message
 
 ```
-POST /sources/{sourceId}/alerts
+POST /inputs/{inputId}/messages
 Authorization: Bearer <secret>
 Content-Type: application/json
 
@@ -107,7 +107,7 @@ Response `201 Created`:
 ### WebSocket Inbound
 
 ```
-GET /sources/{sourceId}/alerts/ws
+GET /inputs/{inputId}/messages/ws
 Authorization: Bearer <secret>
 ```
 

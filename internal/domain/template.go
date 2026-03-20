@@ -9,6 +9,7 @@ import (
 
 type TemplateData struct {
 	ID        string
+	// Source is intentionally kept as-is; TemplateData will be removed in Phase 4 (CEL/Expr replaces templates)
 	Source    string
 	Payload   string
 	CreatedAt time.Time
