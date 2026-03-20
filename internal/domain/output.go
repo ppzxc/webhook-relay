@@ -1,10 +1,10 @@
 package domain
 
-type Channel struct {
+type Output struct {
 	ID            string
-	Type          ChannelType
+	Type          OutputType
 	URL           string
-	Template      string
+	Template      map[string]string // key -> CEL/Expr expression
 	Secret        string
 	RetryCount    int
 	RetryDelayMs  int

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"webhook-relay/internal/config"
+	"relaybox/internal/config"
 )
 
 const testYAML = `
@@ -14,20 +14,21 @@ server:
 log:
   level: debug
   format: text
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: test-secret
-channels:
+outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: https://hooks.example.com/test
-    template: '{"text":"{{ .Source }}"}'
+    template:
+      text: 'data.input + ": " + data.payload'
     retryCount: 3
     retryDelayMs: 500
-routes:
-  - sourceId: beszel
-    channelIds:
+rules:
+  - inputId: beszel
+    outputIds:
       - ops-webhook
 storage:
   type: SQLITE
@@ -56,46 +57,33 @@ func TestLoad(t *testing.T) {
 	if cfg.Server.Port != 9090 {
 		t.Errorf("port = %d, want 9090", cfg.Server.Port)
 	}
-	if len(cfg.Sources) != 1 || cfg.Sources[0].ID != "beszel" {
-		t.Errorf("sources = %+v", cfg.Sources)
+	if len(cfg.Inputs) != 1 || cfg.Inputs[0].ID != "beszel" {
+		t.Errorf("inputs = %+v", cfg.Inputs)
 	}
-	if len(cfg.Routes) != 1 {
-		t.Errorf("routes = %+v", cfg.Routes)
+	if len(cfg.Rules) != 1 {
+		t.Errorf("rules = %+v", cfg.Rules)
 	}
-}
-
-func TestLoad_InvalidTemplate(t *testing.T) {
-	yaml := `
-server:
-  port: 8080
-channels:
-  - id: bad
-    type: WEBHOOK
-    url: https://example.com
-    template: '{{ .Source'
-`
-	_, err := config.Load(writeConfig(t, yaml))
-	if err == nil {
-		t.Fatal("expected error for invalid template")
+	if cfg.Outputs[0].Template["text"] != `data.input + ": " + data.payload` {
+		t.Errorf("template = %+v", cfg.Outputs[0].Template)
 	}
 }
 
-func TestLoad_EmptySourceID(t *testing.T) {
+func TestLoad_EmptyInputID(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: ""
     type: BESZEL
     secret: s
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for empty source ID")
+		t.Fatal("expected error for empty input ID")
 	}
 }
 
-func TestLoad_DuplicateSourceID(t *testing.T) {
+func TestLoad_DuplicateInputID(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: s1
@@ -105,41 +93,107 @@ sources:
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for duplicate source ID")
+		t.Fatal("expected error for duplicate input ID")
 	}
 }
 
-func TestLoad_RouteReferencesUnknownChannel(t *testing.T) {
+func TestLoad_RuleReferencesUnknownOutput(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: s
-channels:
+outputs:
   - id: ch1
     type: WEBHOOK
     url: https://example.com
-    template: '{}'
-routes:
-  - sourceId: beszel
-    channelIds:
-      - nonexistent-channel
+rules:
+  - inputId: beszel
+    outputIds:
+      - nonexistent-output
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for route referencing unknown channel")
+		t.Fatal("expected error for rule referencing unknown output")
 	}
 }
 
-func TestInMemoryRouteConfigReader(t *testing.T) {
+func TestInMemoryRuleConfigReader(t *testing.T) {
 	cfg, _ := config.Load(writeConfig(t, testYAML))
-	reader := config.NewInMemoryRouteConfigReader(cfg)
+	reader := config.NewInMemoryRuleConfigReader(cfg)
 
-	channels, err := reader.GetChannels(nil, "BESZEL") // query by source type, not source ID
+	rule, outputs, err := reader.GetRule(nil, "BESZEL")
 	if err != nil {
-		t.Fatalf("GetChannels error: %v", err)
+		t.Fatalf("GetRule error: %v", err)
 	}
-	if len(channels) != 1 {
-		t.Errorf("got %d channels, want 1", len(channels))
+	if len(outputs) != 1 {
+		t.Errorf("got %d outputs, want 1", len(outputs))
+	}
+	if rule.InputID != "beszel" {
+		t.Errorf("rule.InputID = %q, want beszel", rule.InputID)
+	}
+}
+
+func TestLoad_WithExpressionConfig(t *testing.T) {
+	yaml := `
+expression:
+  defaultEngine: expr
+inputs:
+  - id: beszel
+    type: BESZEL
+    secret: s
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    url: https://example.com
+rules:
+  - inputId: beszel
+    engine: expr
+    filter: 'data.status == "CRITICAL"'
+    mapping:
+      severity: '"HIGH"'
+    routing:
+      - condition: 'data.severity == "HIGH"'
+        outputIds: [ch1]
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Expression.DefaultEngine != "expr" {
+		t.Errorf("defaultEngine = %q, want expr", cfg.Expression.DefaultEngine)
+	}
+	if cfg.Rules[0].Engine != "expr" {
+		t.Errorf("rule engine = %q, want expr", cfg.Rules[0].Engine)
+	}
+	if cfg.Rules[0].Filter != `data.status == "CRITICAL"` {
+		t.Errorf("filter = %q", cfg.Rules[0].Filter)
+	}
+	if len(cfg.Rules[0].Routing) != 1 {
+		t.Errorf("routing len = %d, want 1", len(cfg.Rules[0].Routing))
+	}
+
+	reader := config.NewInMemoryRuleConfigReader(cfg)
+	rule, outputs, err := reader.GetRule(nil, "BESZEL")
+	if err != nil {
+		t.Fatalf("GetRule error: %v", err)
+	}
+	if rule.Engine != "expr" {
+		t.Errorf("rule.Engine = %q, want expr", rule.Engine)
+	}
+	if rule.Filter != `data.status == "CRITICAL"` {
+		t.Errorf("rule.Filter = %q", rule.Filter)
+	}
+	if len(rule.Routing) != 1 {
+		t.Errorf("rule.Routing len = %d", len(rule.Routing))
+	}
+	if len(outputs) != 1 {
+		t.Errorf("outputs len = %d, want 1", len(outputs))
 	}
 }

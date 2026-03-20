@@ -3,7 +3,6 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,36 +11,48 @@ import (
 	"testing"
 	"time"
 
-	httpadapter "webhook-relay/internal/adapter/input/http"
-	"webhook-relay/internal/adapter/output/filequeue"
-	sqliteadapter "webhook-relay/internal/adapter/output/sqlite"
-	webhookadapter "webhook-relay/internal/adapter/output/webhook"
-	"webhook-relay/internal/application/port/output"
-	"webhook-relay/internal/application/service"
-	cfgpkg "webhook-relay/internal/config"
-	"webhook-relay/internal/domain"
+	httpadapter "relaybox/internal/adapter/input/http"
+	"relaybox/internal/adapter/output/expression"
+	"relaybox/internal/adapter/output/filequeue"
+	sqliteadapter "relaybox/internal/adapter/output/sqlite"
+	webhookadapter "relaybox/internal/adapter/output/webhook"
+	"relaybox/internal/application/port/output"
+	"relaybox/internal/application/service"
+	cfgpkg "relaybox/internal/config"
+	"relaybox/internal/domain"
 )
 
-// configSourceResolver는 cmd/server/main.go와 동일한 로직을 E2E에서 재구현 (DI 검증용)
-type configSourceResolver struct {
-	sources map[string]domain.SourceType
+// configInputResolver replicates cmd/server/main.go logic for E2E DI
+type configInputResolver struct {
+	inputs  map[string]domain.InputType
 	secrets map[string]string
 }
 
-func (r *configSourceResolver) Resolve(id string) (domain.SourceType, error) {
-	st, ok := r.sources[id]
+func (r *configInputResolver) Resolve(id string) (domain.InputType, error) {
+	st, ok := r.inputs[id]
 	if !ok {
-		return "", domain.ErrSourceNotFound
+		return "", domain.ErrInputNotFound
 	}
 	return st, nil
 }
 
-func (r *configSourceResolver) ValidateToken(id, token string) bool {
+func (r *configInputResolver) ValidateToken(id, token string) bool {
 	return r.secrets[id] == token
 }
 
-func TestE2E_PostAlert_Returns201(t *testing.T) {
-	// 아웃바운드 웹훅 수신 서버
+func newExprRegistry() output.ExpressionEngineRegistry {
+	reg := expression.NewInMemoryExpressionEngineRegistry()
+	celEng, err := expression.NewCELEngine()
+	if err != nil {
+		panic("NewCELEngine: " + err.Error())
+	}
+	reg.Register(celEng)
+	reg.Register(expression.NewExprEngine())
+	return reg
+}
+
+func TestE2E_PostMessage_Returns201(t *testing.T) {
+	// Outbound webhook receiver
 	var mu sync.Mutex
 	var deliveredPayload []byte
 	targetSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,28 +65,34 @@ func TestE2E_PostAlert_Returns201(t *testing.T) {
 	defer targetSrv.Close()
 
 	cfg := &cfgpkg.Config{
-		Sources:  []cfgpkg.SourceConfig{{ID: "beszel", Type: "BESZEL", Secret: "tok"}},
-		Channels: []cfgpkg.ChannelConfig{{ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL, Template: `{"src":"{{ .Source }}"}`, RetryCount: 1, RetryDelayMs: 10}},
-		Routes:   []cfgpkg.RouteConfig{{SourceID: "beszel", ChannelIDs: []string{"ch1"}}},
-		Queue:    cfgpkg.QueueConfig{WorkerCount: 1},
+		Inputs: []cfgpkg.InputConfig{{ID: "beszel", Type: "BESZEL", Secret: "tok"}},
+		Outputs: []cfgpkg.OutputConfig{{
+			ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL,
+			Template: map[string]string{
+				"src": `data.input`,
+			},
+			RetryCount: 1, RetryDelayMs: 10,
+		}},
+		Rules: []cfgpkg.RuleConfig{{InputID: "beszel", OutputIDs: []string{"ch1"}}},
+		Queue: cfgpkg.QueueConfig{WorkerCount: 1},
 	}
 
 	repo, _ := sqliteadapter.New(":memory:")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	sender := webhookadapter.NewSender()
-	registry := webhookadapter.NewRegistry(map[domain.ChannelType]output.AlertSender{
-		domain.ChannelTypeWebhook: sender,
+	registry := webhookadapter.NewRegistry(map[domain.OutputType]output.OutputSender{
+		domain.OutputTypeWebhook: sender,
 	})
-	routeReader := cfgpkg.NewInMemoryRouteConfigReader(cfg)
-	alertSvc := service.NewAlertService(repo, queue)
-	worker := service.NewDeliveryWorker(queue, repo, routeReader, registry)
+	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
 
-	resolver := &configSourceResolver{
-		sources: map[string]domain.SourceType{"beszel": domain.SourceTypeBeszel},
+	resolver := &configInputResolver{
+		inputs:  map[string]domain.InputType{"beszel": domain.InputTypeBeszel},
 		secrets: map[string]string{"beszel": "tok"},
 	}
-	router := httpadapter.NewRouter(alertSvc, resolver, nil)
+	router := httpadapter.NewRouter(msgSvc, resolver, nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
@@ -83,8 +100,8 @@ func TestE2E_PostAlert_Returns201(t *testing.T) {
 	defer cancel()
 	worker.Start(ctx, 1)
 
-	// POST 알람
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/sources/beszel/alerts",
+	// POST message
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/inputs/beszel/messages",
 		strings.NewReader(`{"host":"server1"}`))
 	req.Header.Set("Authorization", "Bearer tok")
 	req.Header.Set("Content-Type", "application/json")
@@ -108,7 +125,7 @@ func TestE2E_PostAlert_Returns201(t *testing.T) {
 		t.Errorf("body status = %v, want PENDING", body["status"])
 	}
 
-	// DeliveryWorker가 전달 완료할 때까지 대기
+	// Wait for relay worker to deliver
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
@@ -126,11 +143,15 @@ func TestE2E_PostAlert_Returns201(t *testing.T) {
 	mu.Unlock()
 
 	if len(got) == 0 {
-		t.Error("delivery worker did not deliver the alert")
+		t.Error("relay worker did not deliver the message")
 	}
-	want := fmt.Sprintf(`{"src":"%s"}`, string(domain.SourceTypeBeszel))
-	if string(got) != want {
-		t.Errorf("delivered payload = %q, want %q", got, want)
+	// Template is {"src": input} which evaluates to {"src":"BESZEL"}
+	var result map[string]any
+	if err := json.Unmarshal(got, &result); err != nil {
+		t.Fatalf("unmarshal delivered payload: %v", err)
+	}
+	if result["src"] != string(domain.InputTypeBeszel) {
+		t.Errorf("delivered src = %v, want %s", result["src"], domain.InputTypeBeszel)
 	}
 }
 
@@ -138,9 +159,9 @@ func TestE2E_Healthz(t *testing.T) {
 	repo, _ := sqliteadapter.New(":memory:")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
-	alertSvc := service.NewAlertService(repo, queue)
-	resolver := &configSourceResolver{}
-	router := httpadapter.NewRouter(alertSvc, resolver, nil)
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
+	resolver := &configInputResolver{}
+	router := httpadapter.NewRouter(msgSvc, resolver, nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 

@@ -1,42 +1,47 @@
-# webhook-relay
+# relaybox
 
-모니터링 알람을 수신하여 외부 채널로 전달하는 경량 웹훅 릴레이 허브.
+Generic relay hub: receives any inbound protocol/format and delivers to outbound channels (CEL/Expr expression filter/transform/route rules planned).
 
 ```
-beszel / dozzle  →  webhook-relay  →  Slack / Discord / 커스텀 Webhook
+any inbound (HTTP REST / WebSocket / TCP / ...)
+        ↓
+  CEL / Expr expression filter + transform + route
+        ↓
+any outbound (Webhook / Slack / Discord / ...)
 ```
 
-## 주요 기능
+## Features
 
-- **다중 소스 수신** — HTTP REST + WebSocket 인바운드
-- **YAML 템플릿 변환** — Go `text/template` 기반 페이로드 변환
-- **at-least-once 전달** — 파일 큐 기반, 재시작 후에도 메시지 유실 없음
-- **지수 백오프 재시도** — 채널별 `retryCount` / `retryDelayMs` 설정
-- **설정 핫리로드** — 재시작 없이 channels / routes 변경 반영
-- **Bearer token 인증** — 소스별 독립 시크릿
+- **Multi-protocol inbound** — HTTP REST + WebSocket (TCP planned)
+- **Expression-based routing** — CEL/Expr filter and transform rules per route (planned)
+- **Template transformation** — Go `text/template` payload rendering
+- **at-least-once delivery** — file-queue backed, survives restarts
+- **Exponential backoff retry** — per-channel `retryCount` / `retryDelayMs`
+- **Hot config reload** — change outputs / rules without restart
+- **Bearer token auth** — per-input independent secrets
 
-## 빠른 시작
+## Quick Start
 
-### 사전 요구사항
+### Prerequisites
 
 - Go 1.25+
-- GCC (go-sqlite3 CGO 빌드 필요)
+- GCC (required for go-sqlite3 CGO build)
 
 ```bash
-# 빌드
-CGO_ENABLED=1 go build -o webhook-relay ./cmd/server/
+# Build
+CGO_ENABLED=1 go build -o relaybox ./cmd/server/
 
-# 설정 파일 준비
+# Prepare config
 cp internal/config/config.example.yaml config.yaml
-# config.yaml 편집 후
+# Edit config.yaml, then:
 
-# 서버 시작
-./webhook-relay start --config config.yaml
+# Start server
+./relaybox start --config config.yaml
 ```
 
-## 설정
+## Configuration
 
-`config.yaml` 예시:
+`config.yaml` example:
 
 ```yaml
 server:
@@ -46,12 +51,12 @@ log:
   level: info    # debug | info | warn | error
   format: json   # json | text
 
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: "your-secret"
 
-channels:
+outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: "https://hooks.example.com/xyz"
@@ -59,13 +64,13 @@ channels:
     retryCount: 3
     retryDelayMs: 1000
 
-routes:
-  - sourceId: beszel
-    channelIds: [ops-webhook]
+rules:
+  - inputId: beszel
+    outputIds: [ops-webhook]
 
 storage:
   type: SQLITE
-  path: "./data/webhook-relay.db"
+  path: "./data/relaybox.db"
 
 queue:
   type: FILE
@@ -73,71 +78,75 @@ queue:
   workerCount: 2
 ```
 
-### 템플릿 변수
+### Template Variables
 
-| 변수 | 설명 |
-|------|------|
-| `{{ .ID }}` | 알람 ULID |
-| `{{ .Source }}` | 소스 타입 (`BESZEL`, `DOZZLE` 등) |
-| `{{ .Payload }}` | 원본 JSON 페이로드 (문자열) |
-| `{{ .CreatedAt }}` | 수신 시각 (`time.Time`) |
+| Variable | Description |
+|----------|-------------|
+| `{{ .ID }}` | Alert ULID |
+| `{{ .Source }}` | Source type (`BESZEL`, `DOZZLE`, etc.) |
+| `{{ .Payload }}` | Raw JSON payload (string) |
+| `{{ .CreatedAt }}` | Receive time (`time.Time`) |
 
 ## API
 
-### 알람 수신
+### Receive Message
 
 ```
-POST /sources/{sourceId}/alerts
+POST /inputs/{inputId}/messages
 Authorization: Bearer <secret>
 Content-Type: application/json
 
 {"host": "server1", "status": "down"}
 ```
 
-응답 `201 Created`:
+Response `201 Created`:
 ```json
 {"id": "01J...", "status": "PENDING"}
 ```
 
-### WebSocket 수신
+### WebSocket Inbound
 
 ```
-GET /sources/{sourceId}/alerts/ws
+GET /inputs/{inputId}/messages/ws
 Authorization: Bearer <secret>
 ```
 
-연결 후 JSON 메시지 전송 시 HTTP POST와 동일하게 처리.
+JSON messages sent after connect are processed identically to HTTP POST.
 
-### 헬스체크
+### Health Check
 
 ```
 GET /healthz
 → 200 OK
 ```
 
-모든 응답에 `X-API-Version` 헤더가 포함된다.
+All responses include an `X-API-Version` header.
 
-## 아키텍처
+## Architecture
 
-헥사고날 아키텍처(Ports & Adapters). 의존성은 항상 안쪽(domain)으로만 흐른다.
+Hexagonal architecture (Ports & Adapters). Dependencies always flow inward toward domain.
 
 ```
-[ HTTP / WebSocket ]
-        ↓
-  application/service
-        ↓
-[ SQLite repo ]  [ File queue ]  [ Webhook sender ]
+domain (0 deps)
+  ↑
+application/port/{input,output}  ← interface definitions
+  ↑
+application/service              ← business logic
+  ↑
+adapter/{input,output}           ← external world connections
+  ↑
+cmd/server/main.go               ← DI wiring, cobra CLI
 ```
 
-## 개발
+## Development
 
 ```bash
-# 전체 테스트 (race detector)
+# Full test suite (race detector)
 go test -race ./... -timeout 60s
 
-# 정적 분석
+# Static analysis
 go vet ./...
 
-# sqlc 재생성 (SQL 변경 시)
+# Regenerate sqlc (after SQL changes)
 cd internal/adapter/output/sqlite && sqlc generate
 ```

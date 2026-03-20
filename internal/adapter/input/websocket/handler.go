@@ -6,16 +6,16 @@ import (
 	"net/url"
 
 	"github.com/gorilla/websocket"
-	"webhook-relay/internal/application/port/input"
-	"webhook-relay/internal/domain"
+	"relaybox/internal/application/port/input"
+	"relaybox/internal/domain"
 )
 
 type Handler struct {
-	uc       input.ReceiveAlertUseCase
+	uc       input.ReceiveMessageUseCase
 	upgrader websocket.Upgrader
 }
 
-func NewHandler(uc input.ReceiveAlertUseCase) *Handler {
+func NewHandler(uc input.ReceiveMessageUseCase) *Handler {
 	return &Handler{
 		uc:       uc,
 		upgrader: websocket.Upgrader{CheckOrigin: sameHostOrigin},
@@ -36,7 +36,7 @@ func sameHostOrigin(r *http.Request) bool {
 	return u.Host == r.Host
 }
 
-func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request, source domain.SourceType) {
+func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request, inputType domain.InputType) {
 	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		slog.Warn("ws upgrade failed", "err", err)
@@ -48,12 +48,12 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request, source domain.
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				slog.Warn("ws read error", "source", source, "err", err)
+				slog.Warn("ws read error", "input", inputType, "err", err)
 			}
 			return
 		}
-		if _, err := h.uc.Receive(r.Context(), source, msg); err != nil {
-			slog.Warn("receive via ws failed", "source", source, "err", err)
+		if _, err := h.uc.Receive(r.Context(), inputType, "application/json", msg); err != nil {
+			slog.Warn("receive via ws failed", "input", inputType, "err", err)
 		}
 	}
 }

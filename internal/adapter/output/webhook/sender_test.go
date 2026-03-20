@@ -8,17 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"webhook-relay/internal/adapter/output/webhook"
-	"webhook-relay/internal/application/port/output"
-	"webhook-relay/internal/domain"
+	"relaybox/internal/adapter/output/webhook"
+	"relaybox/internal/application/port/output"
+	"relaybox/internal/domain"
 )
 
-// 컴파일 타임 인터페이스 검증
-var _ output.AlertSender = (*webhook.Sender)(nil)
-var _ output.SenderRegistry = (*webhook.Registry)(nil)
+// compile-time interface check
+var _ output.OutputSender = (*webhook.Sender)(nil)
+var _ output.OutputRegistry = (*webhook.Registry)(nil)
 
 func TestSender_Timeout(t *testing.T) {
-	// 응답이 매우 늦은 서버 — 클라이언트 타임아웃이 없으면 무한 대기
 	quit := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -33,11 +32,10 @@ func TestSender_Timeout(t *testing.T) {
 	})
 
 	sender := webhook.NewSender()
-	channel := domain.Channel{URL: srv.URL, Template: `{}`, TimeoutSec: 1}
-	alert := domain.Alert{ID: "t1", Source: domain.SourceTypeBeszel, Payload: domain.RawPayload(`{}`), Version: 1}
+	out := domain.Output{URL: srv.URL, TimeoutSec: 1}
 
 	start := time.Now()
-	err := sender.Send(context.Background(), channel, alert)
+	err := sender.Send(context.Background(), out, []byte(`{}`))
 	if err == nil {
 		t.Fatal("expected timeout error")
 	}
@@ -55,10 +53,10 @@ func TestSender_Send(t *testing.T) {
 	defer srv.Close()
 
 	sender := webhook.NewSender()
-	channel := domain.Channel{URL: srv.URL, Template: `{"text":"{{ .Source }}"}`}
-	alert := domain.Alert{ID: "a1", Source: domain.SourceTypeBeszel, Payload: domain.RawPayload(`{}`), Version: 1}
+	out := domain.Output{URL: srv.URL}
+	payload := []byte(`{"text":"BESZEL"}`)
 
-	if err := sender.Send(context.Background(), channel, alert); err != nil {
+	if err := sender.Send(context.Background(), out, payload); err != nil {
 		t.Fatalf("Send() error: %v", err)
 	}
 	if string(received) != `{"text":"BESZEL"}` {
@@ -67,14 +65,14 @@ func TestSender_Send(t *testing.T) {
 }
 
 func TestRegistry_Get(t *testing.T) {
-	reg := webhook.NewRegistry(map[domain.ChannelType]output.AlertSender{
-		domain.ChannelTypeWebhook: webhook.NewSender(),
+	reg := webhook.NewRegistry(map[domain.OutputType]output.OutputSender{
+		domain.OutputTypeWebhook: webhook.NewSender(),
 	})
-	got, err := reg.Get(domain.ChannelTypeWebhook)
+	got, err := reg.Get(domain.OutputTypeWebhook)
 	if err != nil || got == nil {
 		t.Errorf("Get(WEBHOOK): err=%v", err)
 	}
-	_, err = reg.Get(domain.ChannelTypeSlack)
+	_, err = reg.Get(domain.OutputTypeSlack)
 	if err == nil {
 		t.Error("expected error for unregistered type")
 	}

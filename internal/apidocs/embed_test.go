@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"webhook-relay/internal/apidocs"
+	"relaybox/internal/apidocs"
 )
 
 func TestOpenAPIHandler(t *testing.T) {
@@ -24,7 +24,7 @@ func TestOpenAPIHandler(t *testing.T) {
 		t.Error("body is empty")
 	}
 	// placeholder는 version "0.0.0" — 실제 스펙은 "2026-03-20" 이어야 한다
-	if !strings.Contains(w.Body.String(), "webhook-relay API") {
+	if !strings.Contains(w.Body.String(), "relaybox API") {
 		t.Error("openapi.yaml does not contain expected title")
 	}
 }
@@ -43,7 +43,7 @@ func TestAsyncAPIHandler(t *testing.T) {
 	if w.Body.Len() == 0 {
 		t.Error("body is empty")
 	}
-	if !strings.Contains(w.Body.String(), "webhook-relay WebSocket API") {
+	if !strings.Contains(w.Body.String(), "relaybox WebSocket API") {
 		t.Error("asyncapi.yaml does not contain expected title")
 	}
 }

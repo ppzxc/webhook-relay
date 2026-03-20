@@ -3,10 +3,10 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
-	"webhook-relay/internal/domain"
 )
 
 type ServerConfig struct {
@@ -27,26 +27,40 @@ type LogConfig struct {
 	Format string `mapstructure:"format"`
 }
 
-type SourceConfig struct {
-	ID     string `mapstructure:"id"`
-	Type   string `mapstructure:"type"`
-	Secret string `mapstructure:"secret"`
+type InputConfig struct {
+	ID        string `mapstructure:"id"`
+	Type      string `mapstructure:"type"`
+	Parser    string `mapstructure:"parser"`
+	Secret    string `mapstructure:"secret"`
+	Pattern   string `mapstructure:"pattern"`   // for regex parser
+	Address   string `mapstructure:"address"`   // TCP: bind address, e.g. ":9000"
+	Delimiter string `mapstructure:"delimiter"` // TCP: message delimiter, default "\n"
 }
 
-type ChannelConfig struct {
-	ID            string `mapstructure:"id"`
-	Type          string `mapstructure:"type"`
-	URL           string `mapstructure:"url"`
-	Template      string `mapstructure:"template"`
-	RetryCount    int    `mapstructure:"retryCount"`
-	RetryDelayMs  int    `mapstructure:"retryDelayMs"`
-	TimeoutSec    int    `mapstructure:"timeoutSec"`
-	SkipTLSVerify bool   `mapstructure:"skipTLSVerify"`
+type OutputConfig struct {
+	ID            string            `mapstructure:"id"`
+	Type          string            `mapstructure:"type"`
+	URL           string            `mapstructure:"url"`
+	Template      map[string]string `mapstructure:"template"`
+	Secret        string            `mapstructure:"secret"`
+	RetryCount    int               `mapstructure:"retryCount"`
+	RetryDelayMs  int               `mapstructure:"retryDelayMs"`
+	TimeoutSec    int               `mapstructure:"timeoutSec"`
+	SkipTLSVerify bool              `mapstructure:"skipTLSVerify"`
 }
 
-type RouteConfig struct {
-	SourceID   string   `mapstructure:"sourceId"`
-	ChannelIDs []string `mapstructure:"channelIds"`
+type RouteConditionConfig struct {
+	Condition string   `mapstructure:"condition"`
+	OutputIDs []string `mapstructure:"outputIds"`
+}
+
+type RuleConfig struct {
+	InputID   string                 `mapstructure:"inputId"`
+	OutputIDs []string               `mapstructure:"outputIds"`
+	Engine    string                 `mapstructure:"engine"`
+	Filter    string                 `mapstructure:"filter"`
+	Mapping   map[string]string      `mapstructure:"mapping"`
+	Routing   []RouteConditionConfig `mapstructure:"routing"`
 }
 
 type StorageConfig struct {
@@ -60,17 +74,22 @@ type QueueConfig struct {
 	WorkerCount int    `mapstructure:"workerCount"`
 }
 
-type Config struct {
-	Server   ServerConfig    `mapstructure:"server"`
-	Log      LogConfig       `mapstructure:"log"`
-	Sources  []SourceConfig  `mapstructure:"sources"`
-	Channels []ChannelConfig `mapstructure:"channels"`
-	Routes   []RouteConfig   `mapstructure:"routes"`
-	Storage  StorageConfig   `mapstructure:"storage"`
-	Queue    QueueConfig     `mapstructure:"queue"`
+type ExpressionConfig struct {
+	DefaultEngine string `mapstructure:"defaultEngine"` // "cel" or "expr"
 }
 
-// Load 설정 파일을 읽어 Config를 반환한다. 템플릿 검증 포함.
+type Config struct {
+	Server     ServerConfig     `mapstructure:"server"`
+	Log        LogConfig        `mapstructure:"log"`
+	Inputs     []InputConfig    `mapstructure:"inputs"`
+	Outputs    []OutputConfig   `mapstructure:"outputs"`
+	Rules      []RuleConfig     `mapstructure:"rules"`
+	Storage    StorageConfig    `mapstructure:"storage"`
+	Queue      QueueConfig      `mapstructure:"queue"`
+	Expression ExpressionConfig `mapstructure:"expression"`
+}
+
+// Load reads and validates the config file.
 func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -81,7 +100,7 @@ func Load(path string) (*Config, error) {
 	return unmarshalAndValidate(v)
 }
 
-// Watch 설정 파일 변경 감지. channels/routes만 핫리로드. 유효하지 않으면 기존 유지.
+// Watch detects config file changes. Only outputs/rules are hot-reloaded.
 func Watch(v *viper.Viper, onChange func(cfg *Config)) {
 	v.WatchConfig()
 	v.OnConfigChange(func(_ fsnotify.Event) {
@@ -94,7 +113,7 @@ func Watch(v *viper.Viper, onChange func(cfg *Config)) {
 	})
 }
 
-// NewViper path에서 viper 인스턴스를 반환한다 (Watch용).
+// NewViper returns a viper instance for Watch.
 func NewViper(path string) (*viper.Viper, error) {
 	v := viper.New()
 	v.SetConfigFile(path)
@@ -122,44 +141,55 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 	if err := validateIDs(&cfg); err != nil {
 		return nil, err
 	}
-	for _, ch := range cfg.Channels {
-		if ch.Template == "" {
-			continue
-		}
-		if err := domain.ValidateTemplate(ch.Template); err != nil {
-			return nil, fmt.Errorf("channel %q: %w", ch.ID, err)
-		}
-	}
 	return &cfg, nil
 }
 
 func validateIDs(cfg *Config) error {
-	seenSources := make(map[string]struct{}, len(cfg.Sources))
-	for _, s := range cfg.Sources {
+	seenInputs := make(map[string]struct{}, len(cfg.Inputs))
+	for _, s := range cfg.Inputs {
 		if s.ID == "" {
-			return fmt.Errorf("source ID must not be empty")
+			return fmt.Errorf("input ID must not be empty")
 		}
-		if _, dup := seenSources[s.ID]; dup {
-			return fmt.Errorf("duplicate source ID %q", s.ID)
+		if _, dup := seenInputs[s.ID]; dup {
+			return fmt.Errorf("duplicate input ID %q", s.ID)
 		}
-		seenSources[s.ID] = struct{}{}
+		seenInputs[s.ID] = struct{}{}
 	}
 
-	seenChannels := make(map[string]struct{}, len(cfg.Channels))
-	for _, c := range cfg.Channels {
+	seenOutputs := make(map[string]struct{}, len(cfg.Outputs))
+	for _, c := range cfg.Outputs {
 		if c.ID == "" {
-			return fmt.Errorf("channel ID must not be empty")
+			return fmt.Errorf("output ID must not be empty")
 		}
-		if _, dup := seenChannels[c.ID]; dup {
-			return fmt.Errorf("duplicate channel ID %q", c.ID)
+		if _, dup := seenOutputs[c.ID]; dup {
+			return fmt.Errorf("duplicate output ID %q", c.ID)
 		}
-		seenChannels[c.ID] = struct{}{}
+		seenOutputs[c.ID] = struct{}{}
 	}
 
-	for _, rt := range cfg.Routes {
-		for _, chID := range rt.ChannelIDs {
-			if _, ok := seenChannels[chID]; !ok {
-				return fmt.Errorf("route for source %q references unknown channel %q", rt.SourceID, chID)
+	for _, inp := range cfg.Inputs {
+		if inp.Address != "" {
+			if _, err := net.ResolveTCPAddr("tcp", inp.Address); err != nil {
+				return fmt.Errorf("input %q: invalid TCP address %q: %w", inp.ID, inp.Address, err)
+			}
+		}
+		if inp.Address != "" && inp.Delimiter != "" && len(inp.Delimiter) > 1 {
+			return fmt.Errorf("input %q: delimiter must be a single character, got %q", inp.ID, inp.Delimiter)
+		}
+	}
+
+	for _, rt := range cfg.Rules {
+		for _, outID := range rt.OutputIDs {
+			if _, ok := seenOutputs[outID]; !ok {
+				return fmt.Errorf("rule for input %q references unknown output %q", rt.InputID, outID)
+			}
+		}
+		// Validate routing condition output IDs
+		for _, rc := range rt.Routing {
+			for _, outID := range rc.OutputIDs {
+				if _, ok := seenOutputs[outID]; !ok {
+					return fmt.Errorf("rule for input %q routing condition references unknown output %q", rt.InputID, outID)
+				}
 			}
 		}
 	}

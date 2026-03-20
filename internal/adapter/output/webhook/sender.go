@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"webhook-relay/internal/domain"
+	"relaybox/internal/domain"
 )
 
 const defaultTimeoutSec = 10
@@ -17,26 +17,22 @@ type Sender struct{}
 
 func NewSender() *Sender { return &Sender{} }
 
-func (s *Sender) Send(ctx context.Context, ch domain.Channel, alert domain.Alert) error {
-	body, err := domain.RenderTemplate(ch.Template, alert)
-	if err != nil {
-		return fmt.Errorf("render: %w", err)
-	}
-	timeoutSec := ch.TimeoutSec
+func (s *Sender) Send(ctx context.Context, out domain.Output, payload []byte) error {
+	timeoutSec := out.TimeoutSec
 	if timeoutSec <= 0 {
 		timeoutSec = defaultTimeoutSec
 	}
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
-	if ch.SkipTLSVerify {
+	if out.SkipTLSVerify {
 		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, out.URL, bytes.NewReader(payload))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if ch.Secret != "" {
-		req.Header.Set("Authorization", "Bearer "+ch.Secret)
+	if out.Secret != "" {
+		req.Header.Set("Authorization", "Bearer "+out.Secret)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

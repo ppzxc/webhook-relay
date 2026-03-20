@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-type Alert struct {
+type Message struct {
 	ID            string       `json:"id"`
 	Version       int64        `json:"version"`
-	Source        string       `json:"source"`
+	Input         string       `json:"input"`
 	Payload       []byte       `json:"payload"`
 	CreatedAt     time.Time    `json:"created_at"`
 	Status        string       `json:"status"`

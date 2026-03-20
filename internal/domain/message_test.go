@@ -5,20 +5,20 @@ import (
 	"testing"
 	"time"
 
-	"webhook-relay/internal/domain"
+	"relaybox/internal/domain"
 )
 
-func TestAlertStatus_IsValid(t *testing.T) {
+func TestMessageStatus_IsValid(t *testing.T) {
 	tests := []struct {
 		name  string
-		input domain.AlertStatus
+		input domain.MessageStatus
 		want  bool
 	}{
-		{"pending", domain.AlertStatusPending, true},
-		{"delivered", domain.AlertStatusDelivered, true},
-		{"failed", domain.AlertStatusFailed, true},
-		{"unknown", domain.AlertStatus("UNKNOWN"), false},
-		{"empty", domain.AlertStatus(""), false},
+		{"pending", domain.MessageStatusPending, true},
+		{"delivered", domain.MessageStatusDelivered, true},
+		{"failed", domain.MessageStatusFailed, true},
+		{"unknown", domain.MessageStatus("UNKNOWN"), false},
+		{"empty", domain.MessageStatus(""), false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -29,16 +29,16 @@ func TestAlertStatus_IsValid(t *testing.T) {
 	}
 }
 
-func TestAlertStatus_CanTransitionTo(t *testing.T) {
+func TestMessageStatus_CanTransitionTo(t *testing.T) {
 	tests := []struct {
-		from domain.AlertStatus
-		to   domain.AlertStatus
+		from domain.MessageStatus
+		to   domain.MessageStatus
 		want bool
 	}{
-		{domain.AlertStatusPending, domain.AlertStatusDelivered, true},
-		{domain.AlertStatusPending, domain.AlertStatusFailed, true},
-		{domain.AlertStatusFailed, domain.AlertStatusPending, true},
-		{domain.AlertStatusDelivered, domain.AlertStatusPending, false},
+		{domain.MessageStatusPending, domain.MessageStatusDelivered, true},
+		{domain.MessageStatusPending, domain.MessageStatusFailed, true},
+		{domain.MessageStatusFailed, domain.MessageStatusPending, true},
+		{domain.MessageStatusDelivered, domain.MessageStatusPending, false},
 	}
 	for _, tt := range tests {
 		t.Run(string(tt.from)+"->"+string(tt.to), func(t *testing.T) {
@@ -64,21 +64,21 @@ func TestRawPayload_MarshalJSON(t *testing.T) {
 	}
 }
 
-func TestAlert_JSON_RoundTrip(t *testing.T) {
+func TestMessage_JSON_RoundTrip(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
-	a := domain.Alert{
+	a := domain.Message{
 		ID:        "01J...",
 		Version:   1,
-		Source:    domain.SourceTypeBeszel,
+		Input:     domain.InputTypeBeszel,
 		Payload:   domain.RawPayload(`{"host":"server1"}`),
 		CreatedAt: now,
-		Status:    domain.AlertStatusPending,
+		Status:    domain.MessageStatusPending,
 	}
 	b, err := json.Marshal(a)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	var got domain.Alert
+	var got domain.Message
 	if err := json.Unmarshal(b, &got); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
