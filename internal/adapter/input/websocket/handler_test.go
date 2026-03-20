@@ -15,7 +15,7 @@ import (
 
 type mockUseCase struct{ count atomic.Int32 }
 
-func (m *mockUseCase) Receive(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+func (m *mockUseCase) Receive(_ context.Context, _ domain.InputType, _ []byte) (string, error) {
 	m.count.Add(1)
 	return "test-id", nil
 }
@@ -25,7 +25,7 @@ func TestWebSocketHandler_ReceiveMessage(t *testing.T) {
 	handler := wsadapter.NewHandler(uc)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeWS(w, r, domain.SourceTypeBeszel)
+		handler.ServeWS(w, r, domain.InputTypeBeszel)
 	}))
 	defer srv.Close()
 
@@ -47,7 +47,7 @@ func TestWebSocketHandler_CrossOriginRejected(t *testing.T) {
 	handler := wsadapter.NewHandler(uc)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeWS(w, r, domain.SourceTypeBeszel)
+		handler.ServeWS(w, r, domain.InputTypeBeszel)
 	}))
 	defer srv.Close()
 

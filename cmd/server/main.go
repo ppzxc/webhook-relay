@@ -30,7 +30,7 @@ func main() {
 
 func rootCmd() *cobra.Command {
 	var cfgPath string
-	root := &cobra.Command{Use: "relaybox", Short: "Generic relay hub — receives any inbound message, routes to outbound channels"}
+	root := &cobra.Command{Use: "relaybox", Short: "Generic relay hub — receives any inbound message, routes to outbound outputs"}
 	start := &cobra.Command{
 		Use:   "start",
 		Short: "Start server",
@@ -65,12 +65,12 @@ func runServer(cfgPath string) error {
 	}
 
 	sender := webhookadapter.NewSender()
-	registry := webhookadapter.NewRegistry(map[domain.ChannelType]output.AlertSender{
-		domain.ChannelTypeWebhook: sender,
+	registry := webhookadapter.NewRegistry(map[domain.OutputType]output.OutputSender{
+		domain.OutputTypeWebhook: sender,
 	})
 
 	// 설정 기반 라우팅 (핫리로드 지원)
-	routeReader := cfgpkg.NewInMemoryRouteConfigReader(cfg)
+	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
 
 	// Viper WatchConfig → 핫리로드
 	v, err := cfgpkg.NewViper(cfgPath)
@@ -78,18 +78,18 @@ func runServer(cfgPath string) error {
 		return fmt.Errorf("init viper: %w", err)
 	}
 	cfgpkg.Watch(v, func(newCfg *cfgpkg.Config) {
-		routeReader.Update(newCfg)
+		ruleReader.Update(newCfg)
 		slog.Info("config reloaded")
 	})
 
 	// 애플리케이션 서비스
-	alertSvc := service.NewAlertService(repo, queue)
-	worker := service.NewDeliveryWorker(queue, repo, routeReader, registry)
+	msgSvc := service.NewMessageService(repo, queue)
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry)
 
 	// HTTP + WebSocket 어댑터 조립
-	resolver := newConfigSourceResolver(cfg)
-	wsHandler := wsadapter.NewHandler(alertSvc)
-	router := httpadapter.NewRouter(alertSvc, resolver, wsHandler)
+	resolver := newConfigInputResolver(cfg)
+	wsHandler := wsadapter.NewHandler(msgSvc)
+	router := httpadapter.NewRouter(msgSvc, resolver, wsHandler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -129,32 +129,32 @@ func runServer(cfgPath string) error {
 	return srv.Shutdown(shutCtx)
 }
 
-// configSourceResolver Config 기반 SourceResolver 구현
-type configSourceResolver struct {
-	sources map[string]domain.SourceType
+// configInputResolver Config 기반 InputResolver 구현
+type configInputResolver struct {
+	inputs  map[string]domain.InputType
 	secrets map[string]string
 }
 
-func newConfigSourceResolver(cfg *cfgpkg.Config) *configSourceResolver {
-	sources := make(map[string]domain.SourceType, len(cfg.Sources))
-	secrets := make(map[string]string, len(cfg.Sources))
-	for _, s := range cfg.Sources {
-		sources[s.ID] = domain.SourceType(s.Type)
+func newConfigInputResolver(cfg *cfgpkg.Config) *configInputResolver {
+	inputs := make(map[string]domain.InputType, len(cfg.Inputs))
+	secrets := make(map[string]string, len(cfg.Inputs))
+	for _, s := range cfg.Inputs {
+		inputs[s.ID] = domain.InputType(s.Type)
 		secrets[s.ID] = s.Secret
 	}
-	return &configSourceResolver{sources: sources, secrets: secrets}
+	return &configInputResolver{inputs: inputs, secrets: secrets}
 }
 
-func (r *configSourceResolver) Resolve(sourceID string) (domain.SourceType, error) {
-	st, ok := r.sources[sourceID]
+func (r *configInputResolver) Resolve(inputID string) (domain.InputType, error) {
+	st, ok := r.inputs[inputID]
 	if !ok {
-		return "", fmt.Errorf("resolve %q: %w", sourceID, domain.ErrSourceNotFound)
+		return "", fmt.Errorf("resolve %q: %w", inputID, domain.ErrInputNotFound)
 	}
 	return st, nil
 }
 
-func (r *configSourceResolver) ValidateToken(sourceID, token string) bool {
-	return r.secrets[sourceID] == token
+func (r *configInputResolver) ValidateToken(inputID, token string) bool {
+	return r.secrets[inputID] == token
 }
 
 func setupLogger(cfg *cfgpkg.Config) {

@@ -5,8 +5,8 @@ info:
   version: "2026-03-20"
   description: |
     Inbound WebSocket API for relaybox.
-    Monitoring apps (Beszel, Dozzle, etc.) connect and push alert payloads to the server.
-    The server processes each message via ReceiveAlertUseCase.
+    Monitoring apps (Beszel, Dozzle, etc.) connect and push message payloads to the server.
+    The server processes each message via ReceiveMessageUseCase.
 
 servers:
   local:
@@ -17,49 +17,49 @@ servers:
       - $ref: "#/components/securitySchemes/bearerAuth"
 
 channels:
-  alerts:
-    address: /sources/{sourceId}/alerts/ws
+  messages:
+    address: /inputs/{inputId}/messages/ws
     description: |
-      WebSocket channel for inbound alert delivery.
+      WebSocket channel for inbound message delivery.
       Authenticate with Authorization: Bearer <token> on connect.
     parameters:
-      sourceId:
-        description: Source identifier (must match a configured source)
+      inputId:
+        description: Input identifier (must match a configured input)
     messages:
-      alertPayload:
-        $ref: "#/components/messages/AlertPayload"
+      messagePayload:
+        $ref: "#/components/messages/MessagePayload"
 
 operations:
-  receiveAlert:
+  receiveMessage:
     action: receive
     channel:
-      $ref: "#/channels/alerts"
-    summary: Receive alert from monitoring app
+      $ref: "#/channels/messages"
+    summary: Receive message from monitoring app
     description: |
-      The server receives JSON alert payloads pushed by the connected monitoring app.
-      Each message triggers ReceiveAlertUseCase.Receive(), which:
-      1. Creates an Alert entity (status=PENDING)
+      The server receives JSON message payloads pushed by the connected monitoring app.
+      Each message triggers ReceiveMessageUseCase.Receive(), which:
+      1. Creates a Message entity (status=PENDING)
       2. Persists to SQLite
-      3. Enqueues for async delivery to configured channels
+      3. Enqueues for async delivery to configured outputs
     messages:
-      - $ref: "#/channels/alerts/messages/alertPayload"
+      - $ref: "#/channels/messages/messages/messagePayload"
 
 components:
   messages:
-    AlertPayload:
-      name: AlertPayload
-      title: Alert Payload
+    MessagePayload:
+      name: MessagePayload
+      title: Message Payload
       summary: Raw JSON payload from monitoring app
       contentType: application/json
       payload:
         type: object
         description: |
-          Source-specific JSON payload. Structure varies by source type.
+          Input-specific JSON payload. Structure varies by input type.
           The relay stores and forwards this payload as-is, applying the
-          channel's Go text/template for transformation on delivery.
+          output's Go text/template for transformation on delivery.
         additionalProperties: true
         examples:
-          - summary: Beszel alert example
+          - summary: Beszel message example
             value:
               level: critical
               message: CPU usage exceeded 90%
@@ -69,4 +69,4 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Source-specific bearer token. Same token used for HTTP POST endpoint.
+      description: Input-specific bearer token. Same token used for HTTP POST endpoint.

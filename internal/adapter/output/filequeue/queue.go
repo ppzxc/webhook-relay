@@ -16,7 +16,7 @@ import (
 )
 
 // 컴파일 타임 인터페이스 검증
-var _ output.AlertQueue = (*Queue)(nil)
+var _ output.MessageQueue = (*Queue)(nil)
 
 type Queue struct{ dir string }
 
@@ -43,19 +43,19 @@ func recoverOrphans(dir string) {
 	}
 }
 
-func (q *Queue) Enqueue(_ context.Context, alert domain.Alert) error {
-	b, err := json.Marshal(alert)
+func (q *Queue) Enqueue(_ context.Context, msg domain.Message) error {
+	b, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	name := fmt.Sprintf("%d-%s.json", time.Now().UnixNano(), alert.ID)
+	name := fmt.Sprintf("%d-%s.json", time.Now().UnixNano(), msg.ID)
 	if err := os.WriteFile(filepath.Join(q.dir, name), b, 0644); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	return nil
 }
 
-func (q *Queue) Dequeue(_ context.Context) (domain.Alert, output.AckFunc, output.NackFunc, error) {
+func (q *Queue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
 	entries, _ := os.ReadDir(q.dir)
 	var files []string
 	for _, e := range entries {
@@ -65,26 +65,26 @@ func (q *Queue) Dequeue(_ context.Context) (domain.Alert, output.AckFunc, output
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return domain.Alert{}, nil, nil, fmt.Errorf("queue empty")
+		return domain.Message{}, nil, nil, fmt.Errorf("queue empty")
 	}
 
 	src := filepath.Join(q.dir, files[0])
 	proc := src + ".processing"
 	if err := os.Rename(src, proc); err != nil {
-		return domain.Alert{}, nil, nil, fmt.Errorf("lock: %w", err)
+		return domain.Message{}, nil, nil, fmt.Errorf("lock: %w", err)
 	}
 	b, err := os.ReadFile(proc)
 	if err != nil {
 		os.Rename(proc, src)
-		return domain.Alert{}, nil, nil, fmt.Errorf("read: %w", err)
+		return domain.Message{}, nil, nil, fmt.Errorf("read: %w", err)
 	}
-	var alert domain.Alert
-	if err := json.Unmarshal(b, &alert); err != nil {
+	var msg domain.Message
+	if err := json.Unmarshal(b, &msg); err != nil {
 		os.Rename(proc, src)
-		return domain.Alert{}, nil, nil, fmt.Errorf("unmarshal: %w", err)
+		return domain.Message{}, nil, nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
 	ack := output.AckFunc(func() error { return os.Remove(proc) })
 	nack := output.NackFunc(func() error { return os.Rename(proc, src) })
-	return alert, ack, nack, nil
+	return msg, ack, nack, nil
 }

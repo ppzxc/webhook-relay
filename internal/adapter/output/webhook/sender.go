@@ -17,26 +17,26 @@ type Sender struct{}
 
 func NewSender() *Sender { return &Sender{} }
 
-func (s *Sender) Send(ctx context.Context, ch domain.Channel, alert domain.Alert) error {
-	body, err := domain.RenderTemplate(ch.Template, alert)
+func (s *Sender) Send(ctx context.Context, out domain.Output, msg domain.Message) error {
+	body, err := domain.RenderTemplate(out.Template, msg)
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
-	timeoutSec := ch.TimeoutSec
+	timeoutSec := out.TimeoutSec
 	if timeoutSec <= 0 {
 		timeoutSec = defaultTimeoutSec
 	}
 	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
-	if ch.SkipTLSVerify {
+	if out.SkipTLSVerify {
 		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ch.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, out.URL, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if ch.Secret != "" {
-		req.Header.Set("Authorization", "Bearer "+ch.Secret)
+	if out.Secret != "" {
+		req.Header.Set("Authorization", "Bearer "+out.Secret)
 	}
 	resp, err := client.Do(req)
 	if err != nil {

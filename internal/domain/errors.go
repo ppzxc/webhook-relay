@@ -3,9 +3,9 @@ package domain
 import "errors"
 
 var (
-	ErrSourceNotFound    = errors.New("source not found")
-	ErrInvalidToken      = errors.New("invalid token")
-	ErrAlertNotFound     = errors.New("alert not found")
-	ErrInvalidTransition = errors.New("invalid status transition")
-	ErrSenderNotFound    = errors.New("sender not registered for channel type")
+	ErrInputNotFound        = errors.New("input not found")
+	ErrInvalidToken         = errors.New("invalid token")
+	ErrMessageNotFound      = errors.New("message not found")
+	ErrInvalidTransition    = errors.New("invalid status transition")
+	ErrOutputSenderNotFound = errors.New("sender not registered for output type")
 )

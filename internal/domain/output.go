@@ -1,8 +1,8 @@
 package domain
 
-type Channel struct {
+type Output struct {
 	ID            string
-	Type          ChannelType
+	Type          OutputType
 	URL           string
 	Template      string
 	Secret        string

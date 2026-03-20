@@ -8,12 +8,12 @@ import (
 )
 
 func TestRenderTemplate(t *testing.T) {
-	alert := domain.Alert{
+	msg := domain.Message{
 		ID:        "abc123",
-		Source:    domain.SourceTypeBeszel,
+		Input:     domain.InputTypeBeszel,
 		Payload:   domain.RawPayload(`{"host":"server1"}`),
 		CreatedAt: time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC),
-		Status:    domain.AlertStatusPending,
+		Status:    domain.MessageStatusPending,
 	}
 
 	tests := []struct {
@@ -40,7 +40,7 @@ func TestRenderTemplate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := domain.RenderTemplate(tt.tmpl, alert)
+			got, err := domain.RenderTemplate(tt.tmpl, msg)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}

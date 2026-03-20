@@ -14,20 +14,20 @@ server:
 log:
   level: debug
   format: text
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: test-secret
-channels:
+outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: https://hooks.example.com/test
     template: '{"text":"{{ .Source }}"}'
     retryCount: 3
     retryDelayMs: 500
-routes:
-  - sourceId: beszel
-    channelIds:
+rules:
+  - inputId: beszel
+    outputIds:
       - ops-webhook
 storage:
   type: SQLITE
@@ -56,11 +56,11 @@ func TestLoad(t *testing.T) {
 	if cfg.Server.Port != 9090 {
 		t.Errorf("port = %d, want 9090", cfg.Server.Port)
 	}
-	if len(cfg.Sources) != 1 || cfg.Sources[0].ID != "beszel" {
-		t.Errorf("sources = %+v", cfg.Sources)
+	if len(cfg.Inputs) != 1 || cfg.Inputs[0].ID != "beszel" {
+		t.Errorf("inputs = %+v", cfg.Inputs)
 	}
-	if len(cfg.Routes) != 1 {
-		t.Errorf("routes = %+v", cfg.Routes)
+	if len(cfg.Rules) != 1 {
+		t.Errorf("rules = %+v", cfg.Rules)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestLoad_InvalidTemplate(t *testing.T) {
 	yaml := `
 server:
   port: 8080
-channels:
+outputs:
   - id: bad
     type: WEBHOOK
     url: https://example.com
@@ -80,22 +80,22 @@ channels:
 	}
 }
 
-func TestLoad_EmptySourceID(t *testing.T) {
+func TestLoad_EmptyInputID(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: ""
     type: BESZEL
     secret: s
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for empty source ID")
+		t.Fatal("expected error for empty input ID")
 	}
 }
 
-func TestLoad_DuplicateSourceID(t *testing.T) {
+func TestLoad_DuplicateInputID(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: s1
@@ -105,41 +105,41 @@ sources:
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for duplicate source ID")
+		t.Fatal("expected error for duplicate input ID")
 	}
 }
 
-func TestLoad_RouteReferencesUnknownChannel(t *testing.T) {
+func TestLoad_RuleReferencesUnknownOutput(t *testing.T) {
 	yaml := `
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: s
-channels:
+outputs:
   - id: ch1
     type: WEBHOOK
     url: https://example.com
     template: '{}'
-routes:
-  - sourceId: beszel
-    channelIds:
-      - nonexistent-channel
+rules:
+  - inputId: beszel
+    outputIds:
+      - nonexistent-output
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
-		t.Fatal("expected error for route referencing unknown channel")
+		t.Fatal("expected error for rule referencing unknown output")
 	}
 }
 
-func TestInMemoryRouteConfigReader(t *testing.T) {
+func TestInMemoryRuleConfigReader(t *testing.T) {
 	cfg, _ := config.Load(writeConfig(t, testYAML))
-	reader := config.NewInMemoryRouteConfigReader(cfg)
+	reader := config.NewInMemoryRuleConfigReader(cfg)
 
-	channels, err := reader.GetChannels(nil, "BESZEL") // query by source type, not source ID
+	outputs, err := reader.GetOutputs(nil, "BESZEL") // query by input type, not input ID
 	if err != nil {
-		t.Fatalf("GetChannels error: %v", err)
+		t.Fatalf("GetOutputs error: %v", err)
 	}
-	if len(channels) != 1 {
-		t.Errorf("got %d channels, want 1", len(channels))
+	if len(outputs) != 1 {
+		t.Errorf("got %d outputs, want 1", len(outputs))
 	}
 }

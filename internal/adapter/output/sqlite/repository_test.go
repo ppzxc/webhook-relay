@@ -11,8 +11,8 @@ import (
 
 // 컴파일 타임 인터페이스 검증
 var _ interface {
-	Save(context.Context, domain.Alert) error
-	FindByID(context.Context, string) (domain.Alert, error)
+	Save(context.Context, domain.Message) error
+	FindByID(context.Context, string) (domain.Message, error)
 } = (*sqliteadapter.Repository)(nil)
 
 func newTestRepo(t *testing.T) *sqliteadapter.Repository {
@@ -29,20 +29,20 @@ func TestRepository_SaveAndFindByID(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 
-	alert := domain.Alert{
-		ID: "test-001", Version: 1, Source: domain.SourceTypeBeszel,
+	msg := domain.Message{
+		ID: "test-001", Version: 1, Input: domain.InputTypeBeszel,
 		Payload:   domain.RawPayload(`{"host":"srv1"}`),
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
-		Status:    domain.AlertStatusPending,
+		Status:    domain.MessageStatusPending,
 	}
-	if err := repo.Save(ctx, alert); err != nil {
+	if err := repo.Save(ctx, msg); err != nil {
 		t.Fatalf("Save() error: %v", err)
 	}
-	got, err := repo.FindByID(ctx, alert.ID)
+	got, err := repo.FindByID(ctx, msg.ID)
 	if err != nil {
 		t.Fatalf("FindByID() error: %v", err)
 	}
-	if got.ID != alert.ID || string(got.Payload) != string(alert.Payload) {
+	if got.ID != msg.ID || string(got.Payload) != string(msg.Payload) {
 		t.Errorf("mismatch: got %+v", got)
 	}
 }
@@ -50,30 +50,30 @@ func TestRepository_SaveAndFindByID(t *testing.T) {
 func TestRepository_UpdateDeliveryState(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
-	alert := domain.Alert{ID: "test-002", Version: 1, Source: domain.SourceTypeDozzle, Payload: domain.RawPayload(`{}`), Status: domain.AlertStatusPending}
-	repo.Save(ctx, alert)
+	msg := domain.Message{ID: "test-002", Version: 1, Input: domain.InputTypeDozzle, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending}
+	repo.Save(ctx, msg)
 
 	now := time.Now().UTC()
-	if err := repo.UpdateDeliveryState(ctx, alert.ID, domain.AlertStatusDelivered, 1, now); err != nil {
+	if err := repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusDelivered, 1, now); err != nil {
 		t.Fatalf("UpdateDeliveryState() error: %v", err)
 	}
-	got, _ := repo.FindByID(ctx, alert.ID)
-	if got.Status != domain.AlertStatusDelivered || got.RetryCount != 1 {
+	got, _ := repo.FindByID(ctx, msg.ID)
+	if got.Status != domain.MessageStatusDelivered || got.RetryCount != 1 {
 		t.Errorf("unexpected state: %+v", got)
 	}
 }
 
-func TestRepository_FindBySource(t *testing.T) {
+func TestRepository_FindByInput(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 	for _, id := range []string{"a1", "a2", "a3"} {
-		repo.Save(ctx, domain.Alert{ID: id, Source: domain.SourceTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.AlertStatusPending, Version: 1})
+		repo.Save(ctx, domain.Message{ID: id, Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1})
 	}
-	alerts, err := repo.FindBySource(ctx, string(domain.SourceTypeBeszel), 10, 0)
+	messages, err := repo.FindByInput(ctx, string(domain.InputTypeBeszel), 10, 0)
 	if err != nil {
-		t.Fatalf("FindBySource() error: %v", err)
+		t.Fatalf("FindByInput() error: %v", err)
 	}
-	if len(alerts) != 3 {
-		t.Errorf("got %d, want 3", len(alerts))
+	if len(messages) != 3 {
+		t.Errorf("got %d, want 3", len(messages))
 	}
 }

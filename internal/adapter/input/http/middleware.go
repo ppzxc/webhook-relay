@@ -35,9 +35,9 @@ func mapError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvalidToken):
 		writeError(w, r, http.StatusUnauthorized, "Unauthorized", err.Error())
-	case errors.Is(err, domain.ErrSourceNotFound):
+	case errors.Is(err, domain.ErrInputNotFound):
 		writeError(w, r, http.StatusNotFound, "Not Found", err.Error())
-	case errors.Is(err, domain.ErrAlertNotFound):
+	case errors.Is(err, domain.ErrMessageNotFound):
 		writeError(w, r, http.StatusNotFound, "Not Found", err.Error())
 	case errors.Is(err, domain.ErrInvalidTransition):
 		writeError(w, r, http.StatusUnprocessableEntity, "Unprocessable Entity", err.Error())

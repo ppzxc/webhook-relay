@@ -11,7 +11,7 @@ log:
   level: info    # debug, info, warn, error
   format: json   # json, text
 
-sources:
+inputs:
   - id: beszel
     type: BESZEL
     secret: "change-me"
@@ -19,7 +19,7 @@ sources:
     type: DOZZLE
     secret: "change-me"
 
-channels:
+outputs:
   - id: ops-webhook
     type: WEBHOOK
     url: "https://hooks.example.com/xyz"
@@ -29,11 +29,11 @@ channels:
     retryDelayMs: 1000
     skipTLSVerify: false
 
-routes:
-  - sourceId: beszel
-    channelIds: [ops-webhook]
-  - sourceId: dozzle
-    channelIds: [ops-webhook]
+rules:
+  - inputId: beszel
+    outputIds: [ops-webhook]
+  - inputId: dozzle
+    outputIds: [ops-webhook]
 
 storage:
   type: SQLITE

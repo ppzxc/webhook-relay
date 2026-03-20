@@ -4,8 +4,8 @@ info:
   title: relaybox API
   version: "2026-03-20"
   description: |
-    relaybox — generic relay hub. Receives alerts from monitoring apps (Beszel, Dozzle, etc.)
-    and forwards them to external channels via templates.
+    relaybox — generic relay hub. Receives messages from monitoring apps (Beszel, Dozzle, etc.)
+    and forwards them to external outputs via templates.
 
 servers:
   - url: http://localhost:8080
@@ -15,12 +15,12 @@ security:
   - bearerAuth: []
 
 tags:
-  - name: alerts
-    description: Alert management
-  - name: sources
-    description: Source management
-  - name: channels
-    description: Channel management
+  - name: messages
+    description: Message management
+  - name: inputs
+    description: Input management
+  - name: outputs
+    description: Output management
   - name: health
     description: Health check
 
@@ -44,34 +44,34 @@ paths:
                     example: ok
                 required: [status]
 
-  /sources/{sourceId}/alerts:
+  /inputs/{inputId}/messages:
     post:
-      summary: Receive alert
-      operationId: postAlert
-      tags: [alerts]
+      summary: Receive message
+      operationId: postMessage
+      tags: [messages]
       parameters:
-        - $ref: "#/components/parameters/sourceId"
+        - $ref: "#/components/parameters/inputId"
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Source-specific JSON payload
+              description: Input-specific JSON payload
               additionalProperties: true
       responses:
         "201":
-          description: Alert created
+          description: Message created
           headers:
             Location:
-              description: URL of the created alert
+              description: URL of the created message
               schema:
                 type: string
-                example: /sources/beszel/alerts/01J...
+                example: /inputs/beszel/messages/01J...
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AlertCreatedResponse"
+                $ref: "#/components/schemas/MessageCreatedResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "413":
@@ -80,12 +80,12 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
     get:
-      summary: List alerts for a source
-      operationId: listAlerts
+      summary: List messages for an input
+      operationId: listMessages
       x-status: planned
-      tags: [alerts]
+      tags: [messages]
       parameters:
-        - $ref: "#/components/parameters/sourceId"
+        - $ref: "#/components/parameters/inputId"
         - name: limit
           in: query
           schema:
@@ -98,47 +98,47 @@ paths:
             default: 0
       responses:
         "200":
-          description: Alert list
+          description: Message list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Alert"
+                  $ref: "#/components/schemas/Message"
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /sources/{sourceId}/alerts/{alertId}:
+  /inputs/{inputId}/messages/{messageId}:
     get:
-      summary: Get alert by ID
-      operationId: getAlert
-      tags: [alerts]
+      summary: Get message by ID
+      operationId: getMessage
+      tags: [messages]
       parameters:
-        - $ref: "#/components/parameters/sourceId"
-        - $ref: "#/components/parameters/alertId"
+        - $ref: "#/components/parameters/inputId"
+        - $ref: "#/components/parameters/messageId"
       responses:
         "200":
-          description: Alert found
+          description: Message found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Alert"
+                $ref: "#/components/schemas/Message"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
     patch:
-      summary: Update alert status
-      operationId: patchAlert
+      summary: Update message status
+      operationId: patchMessage
       x-status: planned
-      tags: [alerts]
+      tags: [messages]
       description: |
         Allowed transition: FAILED → PENDING (manual re-queue).
         All other transitions return 422.
       parameters:
-        - $ref: "#/components/parameters/sourceId"
-        - $ref: "#/components/parameters/alertId"
+        - $ref: "#/components/parameters/inputId"
+        - $ref: "#/components/parameters/messageId"
       requestBody:
         required: true
         content:
@@ -152,11 +152,11 @@ paths:
               required: [status]
       responses:
         "200":
-          description: Alert updated
+          description: Message updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Alert"
+                $ref: "#/components/schemas/Message"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -164,71 +164,71 @@ paths:
         "422":
           $ref: "#/components/responses/UnprocessableEntity"
 
-  /sources:
+  /inputs:
     get:
-      summary: List sources
-      operationId: listSources
+      summary: List inputs
+      operationId: listInputs
       x-status: planned
-      tags: [sources]
+      tags: [inputs]
       responses:
         "200":
-          description: Source list
+          description: Input list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Source"
+                  $ref: "#/components/schemas/Input"
 
-  /sources/{sourceId}:
+  /inputs/{inputId}:
     get:
-      summary: Get source by ID
-      operationId: getSource
+      summary: Get input by ID
+      operationId: getInput
       x-status: planned
-      tags: [sources]
+      tags: [inputs]
       parameters:
-        - $ref: "#/components/parameters/sourceId"
+        - $ref: "#/components/parameters/inputId"
       responses:
         "200":
-          description: Source found
+          description: Input found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Source"
+                $ref: "#/components/schemas/Input"
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /channels:
+  /outputs:
     get:
-      summary: List channels
-      operationId: listChannels
+      summary: List outputs
+      operationId: listOutputs
       x-status: planned
-      tags: [channels]
+      tags: [outputs]
       responses:
         "200":
-          description: Channel list
+          description: Output list
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Channel"
+                  $ref: "#/components/schemas/Output"
 
-  /channels/{channelId}:
+  /outputs/{outputId}:
     get:
-      summary: Get channel by ID
-      operationId: getChannel
+      summary: Get output by ID
+      operationId: getOutput
       x-status: planned
-      tags: [channels]
+      tags: [outputs]
       parameters:
-        - $ref: "#/components/parameters/channelId"
+        - $ref: "#/components/parameters/outputId"
       responses:
         "200":
-          description: Channel found
+          description: Output found
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Channel"
+                $ref: "#/components/schemas/Output"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -237,25 +237,25 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Source-specific bearer token from config
+      description: Input-specific bearer token from config
 
   parameters:
-    sourceId:
-      name: sourceId
+    inputId:
+      name: inputId
       in: path
       required: true
       schema:
         type: string
         example: beszel
-    alertId:
-      name: alertId
+    messageId:
+      name: messageId
       in: path
       required: true
       schema:
         type: string
         example: 01J...
-    channelId:
-      name: channelId
+    outputId:
+      name: outputId
       in: path
       required: true
       schema:
@@ -263,24 +263,24 @@ components:
         example: ops-webhook
 
   schemas:
-    AlertStatus:
+    MessageStatus:
       type: string
       enum: [PENDING, DELIVERED, FAILED]
       description: |
-        Alert delivery status.
+        Message delivery status.
         Transitions: PENDING → DELIVERED (success), PENDING → FAILED (retries exhausted),
         FAILED → PENDING (manual re-queue via PATCH).
 
-    Alert:
+    Message:
       type: object
       properties:
         id:
           type: string
           description: ULID
-        sourceId:
+        inputId:
           type: string
         status:
-          $ref: "#/components/schemas/AlertStatus"
+          $ref: "#/components/schemas/MessageStatus"
         createdAt:
           type: string
           format: date-time
@@ -290,23 +290,23 @@ components:
         lastAttemptAt:
           type: ["string", "null"]
           format: date-time
-      required: [id, sourceId, status, createdAt, retryCount]
+      required: [id, inputId, status, createdAt, retryCount]
 
-    AlertCreatedResponse:
+    MessageCreatedResponse:
       type: object
       properties:
         id:
           type: string
-        sourceId:
+        inputId:
           type: string
         status:
-          $ref: "#/components/schemas/AlertStatus"
+          $ref: "#/components/schemas/MessageStatus"
         createdAt:
           type: string
           format: date-time
-      required: [id, sourceId, status, createdAt]
+      required: [id, inputId, status, createdAt]
 
-    Source:
+    Input:
       type: object
       properties:
         id:
@@ -316,7 +316,7 @@ components:
           enum: [BESZEL, DOZZLE, GENERIC]
       required: [id, type]
 
-    Channel:
+    Output:
       type: object
       properties:
         id:
@@ -347,7 +347,7 @@ components:
           example: 401
         detail:
           type: string
-          example: "invalid or missing token for source: beszel"
+          example: "invalid or missing token for input: beszel"
         traceId:
           type: string
       required: [type, title, status, detail]

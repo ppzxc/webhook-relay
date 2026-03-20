@@ -14,16 +14,16 @@ type TemplateData struct {
 	CreatedAt time.Time
 }
 
-func RenderTemplate(tmpl string, alert Alert) ([]byte, error) {
+func RenderTemplate(tmpl string, msg Message) ([]byte, error) {
 	t, err := template.New("").Parse(tmpl)
 	if err != nil {
 		return nil, fmt.Errorf("parse template: %w", err)
 	}
 	data := TemplateData{
-		ID:        alert.ID,
-		Source:    string(alert.Source),
-		Payload:   string(alert.Payload),
-		CreatedAt: alert.CreatedAt,
+		ID:        msg.ID,
+		Source:    string(msg.Input),
+		Payload:   string(msg.Payload),
+		CreatedAt: msg.CreatedAt,
 	}
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, data); err != nil {

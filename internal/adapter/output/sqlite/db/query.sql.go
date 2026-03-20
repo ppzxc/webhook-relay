@@ -11,18 +11,18 @@ import (
 	"time"
 )
 
-const getAlertByID = `-- name: GetAlertByID :one
-SELECT id, version, source, payload, created_at, status, retry_count, last_attempt_at
-FROM alerts WHERE id=?
+const getMessageByID = `-- name: GetMessageByID :one
+SELECT id, version, input, payload, created_at, status, retry_count, last_attempt_at
+FROM messages WHERE id=?
 `
 
-func (q *Queries) GetAlertByID(ctx context.Context, id string) (Alert, error) {
-	row := q.db.QueryRowContext(ctx, getAlertByID, id)
-	var i Alert
+func (q *Queries) GetMessageByID(ctx context.Context, id string) (Message, error) {
+	row := q.db.QueryRowContext(ctx, getMessageByID, id)
+	var i Message
 	err := row.Scan(
 		&i.ID,
 		&i.Version,
-		&i.Source,
+		&i.Input,
 		&i.Payload,
 		&i.CreatedAt,
 		&i.Status,
@@ -32,26 +32,26 @@ func (q *Queries) GetAlertByID(ctx context.Context, id string) (Alert, error) {
 	return i, err
 }
 
-const insertAlert = `-- name: InsertAlert :exec
-INSERT INTO alerts (id, version, source, payload, created_at, status, retry_count)
+const insertMessage = `-- name: InsertMessage :exec
+INSERT INTO messages (id, version, input, payload, created_at, status, retry_count)
 VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
-type InsertAlertParams struct {
+type InsertMessageParams struct {
 	ID         string    `json:"id"`
 	Version    int64     `json:"version"`
-	Source     string    `json:"source"`
+	Input      string    `json:"input"`
 	Payload    []byte    `json:"payload"`
 	CreatedAt  time.Time `json:"created_at"`
 	Status     string    `json:"status"`
 	RetryCount int64     `json:"retry_count"`
 }
 
-func (q *Queries) InsertAlert(ctx context.Context, arg InsertAlertParams) error {
-	_, err := q.db.ExecContext(ctx, insertAlert,
+func (q *Queries) InsertMessage(ctx context.Context, arg InsertMessageParams) error {
+	_, err := q.db.ExecContext(ctx, insertMessage,
 		arg.ID,
 		arg.Version,
-		arg.Source,
+		arg.Input,
 		arg.Payload,
 		arg.CreatedAt,
 		arg.Status,
@@ -60,30 +60,30 @@ func (q *Queries) InsertAlert(ctx context.Context, arg InsertAlertParams) error 
 	return err
 }
 
-const listAlertsBySource = `-- name: ListAlertsBySource :many
-SELECT id, version, source, payload, created_at, status, retry_count, last_attempt_at
-FROM alerts WHERE source=? ORDER BY created_at DESC LIMIT ? OFFSET ?
+const listMessagesByInput = `-- name: ListMessagesByInput :many
+SELECT id, version, input, payload, created_at, status, retry_count, last_attempt_at
+FROM messages WHERE input=? ORDER BY created_at DESC LIMIT ? OFFSET ?
 `
 
-type ListAlertsBySourceParams struct {
-	Source string `json:"source"`
+type ListMessagesByInputParams struct {
+	Input  string `json:"input"`
 	Limit  int64  `json:"limit"`
 	Offset int64  `json:"offset"`
 }
 
-func (q *Queries) ListAlertsBySource(ctx context.Context, arg ListAlertsBySourceParams) ([]Alert, error) {
-	rows, err := q.db.QueryContext(ctx, listAlertsBySource, arg.Source, arg.Limit, arg.Offset)
+func (q *Queries) ListMessagesByInput(ctx context.Context, arg ListMessagesByInputParams) ([]Message, error) {
+	rows, err := q.db.QueryContext(ctx, listMessagesByInput, arg.Input, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Alert
+	var items []Message
 	for rows.Next() {
-		var i Alert
+		var i Message
 		if err := rows.Scan(
 			&i.ID,
 			&i.Version,
-			&i.Source,
+			&i.Input,
 			&i.Payload,
 			&i.CreatedAt,
 			&i.Status,
@@ -104,7 +104,7 @@ func (q *Queries) ListAlertsBySource(ctx context.Context, arg ListAlertsBySource
 }
 
 const updateDeliveryState = `-- name: UpdateDeliveryState :exec
-UPDATE alerts SET status=?, retry_count=?, last_attempt_at=? WHERE id=?
+UPDATE messages SET status=?, retry_count=?, last_attempt_at=? WHERE id=?
 `
 
 type UpdateDeliveryStateParams struct {

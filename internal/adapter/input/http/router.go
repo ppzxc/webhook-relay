@@ -15,12 +15,12 @@ import (
 const APIVersion = "2026-03-20"
 
 // WSHandler is the subset of websocket.Handler used by the router.
-// nil is allowed for tests that don't exercise the /alerts/ws path.
+// nil is allowed for tests that don't exercise the /messages/ws path.
 type WSHandler interface {
-	ServeWS(w http.ResponseWriter, r *http.Request, source domain.SourceType)
+	ServeWS(w http.ResponseWriter, r *http.Request, inputType domain.InputType)
 }
 
-func NewRouter(uc input.ReceiveAlertUseCase, resolver SourceResolver, ws WSHandler) *chi.Mux {
+func NewRouter(uc input.ReceiveMessageUseCase, resolver InputResolver, ws WSHandler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
@@ -33,28 +33,28 @@ func NewRouter(uc input.ReceiveAlertUseCase, resolver SourceResolver, ws WSHandl
 	r.Get("/docs/openapi", apidocs.OpenAPIHandler)
 	r.Get("/docs/asyncapi", apidocs.AsyncAPIHandler)
 
-	r.Route("/sources/{sourceId}", func(r chi.Router) {
-		// 리터럴 /alerts/ws를 와일드카드 /alerts/{alertId}보다 먼저 등록
-		r.Get("/alerts/ws", func(w http.ResponseWriter, req *http.Request) {
-			sourceID := chi.URLParam(req, "sourceId")
+	r.Route("/inputs/{inputId}", func(r chi.Router) {
+		// 리터럴 /messages/ws를 와일드카드 /messages/{messageId}보다 먼저 등록
+		r.Get("/messages/ws", func(w http.ResponseWriter, req *http.Request) {
+			inputID := chi.URLParam(req, "inputId")
 			token := tokenFromHeader(req)
-			if token == "" || !resolver.ValidateToken(sourceID, token) {
+			if token == "" || !resolver.ValidateToken(inputID, token) {
 				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "invalid or missing token")
 				return
 			}
-			sourceType, err := resolver.Resolve(sourceID)
+			inputType, err := resolver.Resolve(inputID)
 			if err != nil {
-				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "unknown source")
+				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "unknown input")
 				return
 			}
 			if ws == nil {
 				writeError(w, req, http.StatusNotImplemented, "Not Implemented", "websocket not configured")
 				return
 			}
-			ws.ServeWS(w, req, sourceType)
+			ws.ServeWS(w, req, inputType)
 		})
-		r.Post("/alerts", h.PostAlert)
-		r.Get("/alerts/{alertId}", h.Healthz) // placeholder
+		r.Post("/messages", h.PostMessage)
+		r.Get("/messages/{messageId}", h.Healthz) // placeholder
 	})
 
 	return r

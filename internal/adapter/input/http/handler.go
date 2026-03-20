@@ -14,16 +14,16 @@ import (
 )
 
 type Handler struct {
-	uc       input.ReceiveAlertUseCase
-	resolver SourceResolver
+	uc       input.ReceiveMessageUseCase
+	resolver InputResolver
 }
 
-func NewHandler(uc input.ReceiveAlertUseCase, resolver SourceResolver) *Handler {
+func NewHandler(uc input.ReceiveMessageUseCase, resolver InputResolver) *Handler {
 	return &Handler{uc: uc, resolver: resolver}
 }
 
-func (h *Handler) PostAlert(w http.ResponseWriter, r *http.Request) {
-	sourceID := chi.URLParam(r, "sourceId")
+func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
+	inputID := chi.URLParam(r, "inputId")
 	token := tokenFromHeader(r)
 
 	if token == "" {
@@ -31,13 +31,13 @@ func (h *Handler) PostAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.resolver.ValidateToken(sourceID, token) {
+	if !h.resolver.ValidateToken(inputID, token) {
 		writeError(w, r, http.StatusUnauthorized, "Unauthorized",
-			fmt.Sprintf("invalid or missing token for source: %s", sourceID))
+			fmt.Sprintf("invalid or missing token for input: %s", inputID))
 		return
 	}
 
-	sourceType, err := h.resolver.Resolve(sourceID)
+	inputType, err := h.resolver.Resolve(inputID)
 	if err != nil {
 		mapError(w, r, err)
 		return
@@ -55,20 +55,20 @@ func (h *Handler) PostAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	alertID, err := h.uc.Receive(r.Context(), sourceType, body)
+	messageID, err := h.uc.Receive(r.Context(), inputType, body)
 	if err != nil {
 		mapError(w, r, err)
 		return
 	}
 
 	resp := map[string]any{
-		"id":        alertID,
-		"sourceId":  sourceID,
-		"status":    string(domain.AlertStatusPending),
+		"id":        messageID,
+		"inputId":   inputID,
+		"status":    string(domain.MessageStatusPending),
 		"createdAt": time.Now().UTC().Format(time.RFC3339),
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Location", fmt.Sprintf("/sources/%s/alerts/%s", sourceID, alertID))
+	w.Header().Set("Location", fmt.Sprintf("/inputs/%s/messages/%s", inputID, messageID))
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(resp)
 }
