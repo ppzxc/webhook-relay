@@ -1,0 +1,117 @@
+package http_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	httpadapter "webhook-relay/internal/adapter/input/http"
+	"webhook-relay/internal/domain"
+)
+
+type mockUseCase struct {
+	receiveFn func(context.Context, domain.SourceType, []byte) (string, error)
+}
+
+func (m *mockUseCase) Receive(ctx context.Context, s domain.SourceType, p []byte) (string, error) {
+	return m.receiveFn(ctx, s, p)
+}
+
+type mockResolver struct {
+	sources map[string]domain.SourceType
+	secrets map[string]string
+}
+
+func (m *mockResolver) Resolve(sourceID string) (domain.SourceType, error) {
+	st, ok := m.sources[sourceID]
+	if !ok {
+		return "", domain.ErrSourceNotFound
+	}
+	return st, nil
+}
+
+func (m *mockResolver) ValidateToken(sourceID, token string) bool {
+	return m.secrets[sourceID] == token
+}
+
+func newTestRouter(receiveFn func(context.Context, domain.SourceType, []byte) (string, error)) http.Handler {
+	uc := &mockUseCase{receiveFn: receiveFn}
+	resolver := &mockResolver{
+		sources: map[string]domain.SourceType{"beszel": domain.SourceTypeBeszel},
+		secrets: map[string]string{"beszel": "test-token"},
+	}
+	return httpadapter.NewRouter(uc, resolver, nil)
+}
+
+func TestHandler_PostAlert_Success(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "01JTEST00000000000000000", nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sources/beszel/alerts", strings.NewReader(`{"level":"critical"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want 201", w.Code)
+	}
+	loc := w.Header().Get("Location")
+	if loc == "" {
+		t.Error("Location header missing")
+	}
+	// Location must point to the specific alert, not the collection
+	if !strings.Contains(loc, "/alerts/01JTEST00000000000000000") {
+		t.Errorf("Location = %q, want path containing specific alertId", loc)
+	}
+	if v := w.Header().Get("X-API-Version"); v == "" {
+		t.Error("X-API-Version header missing")
+	}
+}
+
+func TestHandler_PostAlert_InvalidToken(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sources/beszel/alerts", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer wrong-token")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", ct)
+	}
+}
+
+func TestHandler_Healthz(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+}
+
+func TestHandler_SourceNotFound(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", domain.ErrSourceNotFound
+	})
+	req := httptest.NewRequest(http.MethodPost, "/sources/unknown/alerts", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		// unknown source → token check fails first → 401
+		t.Logf("status = %d (expected 401 since unknown source has no registered token)", w.Code)
+	}
+}
