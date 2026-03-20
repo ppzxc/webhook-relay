@@ -43,7 +43,7 @@ internal/application/service/
   delivery_worker.go
   delivery_worker_test.go
 
-config/
+internal/config/
   config.go                  Config 구조체, Load(), Watch()
   route_config_reader.go     InMemoryRouteConfigReader
   config_test.go
@@ -77,7 +77,7 @@ internal/adapter/input/websocket/
   handler.go
   handler_test.go
 
-e2e/
+test/e2e/
   e2e_test.go
 ```
 
@@ -106,7 +106,7 @@ mkdir -p internal/adapter/output/sqlite/db
 mkdir -p internal/adapter/output/filequeue
 mkdir -p internal/adapter/output/webhook
 mkdir -p config
-mkdir -p e2e
+mkdir -p test/e2e
 mkdir -p data
 echo "data/" >> .gitignore
 ```
@@ -767,14 +767,14 @@ git commit -m "feat(port): define all hexagonal port interfaces"
 ## Task 5: 설정 레이어 (Cobra + Viper)
 
 **Files:**
-- Create: `config/config.go`
-- Create: `config/route_config_reader.go`
-- Create: `config/config.example.yaml`
-- Test: `config/config_test.go`
+- Create: `internal/config/config.go`
+- Create: `internal/config/route_config_reader.go`
+- Create: `internal/config/config.example.yaml`
+- Test: `internal/config/config_test.go`
 
 - [ ] **Step 1: 테스트 작성**
 
-`config/config_test.go`:
+`internal/config/config_test.go`:
 
 ```go
 package config_test
@@ -784,7 +784,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"webhook-relay/config"
+	"webhook-relay/internal/config"
 )
 
 const testYAML = `
@@ -876,14 +876,14 @@ func TestInMemoryRouteConfigReader(t *testing.T) {
 - [ ] **Step 2: 테스트 실패 확인**
 
 ```bash
-go test ./config/...
+go test ./internal/config/...
 ```
 
 Expected: FAIL
 
 - [ ] **Step 3: Config 구조체 구현**
 
-`config/config.go`:
+`internal/config/config.go`:
 
 ```go
 package config
@@ -1018,7 +1018,7 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 
 - [ ] **Step 4: RouteConfigReader 구현**
 
-`config/route_config_reader.go`:
+`internal/config/route_config_reader.go`:
 
 ```go
 package config
@@ -1081,7 +1081,7 @@ func (r *InMemoryRouteConfigReader) GetChannels(ctx context.Context, sourceID st
 
 - [ ] **Step 5: example yaml 작성**
 
-`config/config.example.yaml`:
+`internal/config/config.example.yaml`:
 
 ```yaml
 server:
@@ -1134,7 +1134,7 @@ queue:
 - [ ] **Step 6: 테스트 통과 확인**
 
 ```bash
-go test ./config/... -v
+go test ./internal/config/... -v
 ```
 
 Expected: PASS
@@ -1142,7 +1142,7 @@ Expected: PASS
 - [ ] **Step 7: 커밋**
 
 ```bash
-git add config/
+git add internal/config/
 git commit -m "feat(config): add viper loader, hot-reload, and route config reader"
 ```
 
@@ -2715,7 +2715,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	cfgpkg "webhook-relay/config"
+	cfgpkg "webhook-relay/internal/config"
 	sqliteadapter "webhook-relay/internal/adapter/output/sqlite"
 	"webhook-relay/internal/adapter/output/filequeue"
 	webhookadapter "webhook-relay/internal/adapter/output/webhook"
@@ -2896,11 +2896,11 @@ git commit -m "feat(cmd): add cobra CLI with full DI assembly and hot-reload"
 ## Task 14: E2E 테스트
 
 **Files:**
-- Create: `e2e/e2e_test.go`
+- Create: `test/e2e/e2e_test.go`
 
 - [ ] **Step 1: E2E 테스트 작성**
 
-`e2e/e2e_test.go`:
+`test/e2e/e2e_test.go`:
 
 ```go
 package e2e_test
@@ -2916,7 +2916,7 @@ import (
 	"testing"
 	"time"
 
-	cfgpkg "webhook-relay/config"
+	cfgpkg "webhook-relay/internal/config"
 	sqliteadapter "webhook-relay/internal/adapter/output/sqlite"
 	"webhook-relay/internal/adapter/output/filequeue"
 	webhookadapter "webhook-relay/internal/adapter/output/webhook"
