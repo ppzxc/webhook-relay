@@ -25,6 +25,11 @@ func (h *Handler) PostAlert(w http.ResponseWriter, r *http.Request) {
 	sourceID := chi.URLParam(r, "sourceId")
 	token := tokenFromHeader(r)
 
+	if token == "" {
+		writeError(w, r, http.StatusUnauthorized, "Unauthorized", "missing or empty bearer token")
+		return
+	}
+
 	if !h.resolver.ValidateToken(sourceID, token) {
 		writeError(w, r, http.StatusUnauthorized, "Unauthorized",
 			fmt.Sprintf("invalid or missing token for source: %s", sourceID))
