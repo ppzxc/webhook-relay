@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -164,6 +165,17 @@ func validateIDs(cfg *Config) error {
 			return fmt.Errorf("duplicate output ID %q", c.ID)
 		}
 		seenOutputs[c.ID] = struct{}{}
+	}
+
+	for _, inp := range cfg.Inputs {
+		if inp.Address != "" {
+			if _, err := net.ResolveTCPAddr("tcp", inp.Address); err != nil {
+				return fmt.Errorf("input %q: invalid TCP address %q: %w", inp.ID, inp.Address, err)
+			}
+		}
+		if inp.Address != "" && inp.Delimiter != "" && len(inp.Delimiter) > 1 {
+			return fmt.Errorf("input %q: delimiter must be a single character, got %q", inp.ID, inp.Delimiter)
+		}
 	}
 
 	for _, rt := range cfg.Rules {

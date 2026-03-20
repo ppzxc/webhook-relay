@@ -28,7 +28,7 @@ inputs:
     address: ":9001"
     delimiter: "\n"
     parser: json
-    secret: ""
+    secret: ""  # secret unused for TCP inputs (no token auth)
 
 outputs:
   - id: ops-webhook

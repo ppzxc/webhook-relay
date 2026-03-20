@@ -73,16 +73,21 @@ func (l *Listener) StartWithListener(ctx context.Context, ln net.Listener) error
 	}
 }
 
+const maxMessageBytes = 1 << 20 // 1 MiB
+
 func (l *Listener) handleConn(ctx context.Context, conn net.Conn) {
+	connCtx, connCancel := context.WithCancel(ctx)
+	defer connCancel() // exits the watcher goroutine when connection ends
 	defer conn.Close()
 
 	go func() {
-		<-ctx.Done()
+		<-connCtx.Done()
 		conn.Close()
 	}()
 
 	scanner := bufio.NewScanner(conn)
 	scanner.Split(splitFunc(l.delimiter))
+	scanner.Buffer(make([]byte, 4096), maxMessageBytes)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()

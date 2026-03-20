@@ -226,7 +226,12 @@ func parserToContentType(parserType string) string {
 		return "application/xml"
 	case "form":
 		return "application/x-www-form-urlencoded"
+	case "logfmt":
+		return "text/plain"
+	case "regex", "":
+		return "application/octet-stream"
 	default:
+		slog.Warn("unknown parser type for content-type mapping", "parser", parserType)
 		return "application/octet-stream"
 	}
 }
