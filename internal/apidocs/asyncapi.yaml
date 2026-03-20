@@ -1,0 +1,72 @@
+asyncapi: "3.0.0"
+
+info:
+  title: webhook-relay WebSocket API
+  version: "2026-03-20"
+  description: |
+    Inbound WebSocket API for webhook-relay.
+    Monitoring apps (Beszel, Dozzle, etc.) connect and push alert payloads to the server.
+    The server processes each message via ReceiveAlertUseCase.
+
+servers:
+  local:
+    host: localhost:8080
+    protocol: ws
+    description: Local development server
+    security:
+      - $ref: "#/components/securitySchemes/bearerAuth"
+
+channels:
+  alerts:
+    address: /sources/{sourceId}/alerts/ws
+    description: |
+      WebSocket channel for inbound alert delivery.
+      Authenticate with Authorization: Bearer <token> on connect.
+    parameters:
+      sourceId:
+        description: Source identifier (must match a configured source)
+    messages:
+      alertPayload:
+        $ref: "#/components/messages/AlertPayload"
+
+operations:
+  receiveAlert:
+    action: receive
+    channel:
+      $ref: "#/channels/alerts"
+    summary: Receive alert from monitoring app
+    description: |
+      The server receives JSON alert payloads pushed by the connected monitoring app.
+      Each message triggers ReceiveAlertUseCase.Receive(), which:
+      1. Creates an Alert entity (status=PENDING)
+      2. Persists to SQLite
+      3. Enqueues for async delivery to configured channels
+    messages:
+      - $ref: "#/channels/alerts/messages/alertPayload"
+
+components:
+  messages:
+    AlertPayload:
+      name: AlertPayload
+      title: Alert Payload
+      summary: Raw JSON payload from monitoring app
+      contentType: application/json
+      payload:
+        type: object
+        description: |
+          Source-specific JSON payload. Structure varies by source type.
+          The relay stores and forwards this payload as-is, applying the
+          channel's Go text/template for transformation on delivery.
+        additionalProperties: true
+        examples:
+          - summary: Beszel alert example
+            value:
+              level: critical
+              message: CPU usage exceeded 90%
+              host: prod-server-01
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Source-specific bearer token. Same token used for HTTP POST endpoint.

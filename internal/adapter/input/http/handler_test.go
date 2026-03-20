@@ -204,3 +204,62 @@ func TestWebSocketEndpoint_NoToken_Returns401(t *testing.T) {
 		})
 	}
 }
+
+func TestDocs_OpenAPI(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/docs/openapi", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/yaml" {
+		t.Errorf("Content-Type = %q, want application/yaml", ct)
+	}
+	if w.Body.Len() == 0 {
+		t.Error("body is empty")
+	}
+}
+
+func TestDocs_AsyncAPI(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/docs/asyncapi", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/yaml" {
+		t.Errorf("Content-Type = %q, want application/yaml", ct)
+	}
+	if w.Body.Len() == 0 {
+		t.Error("body is empty")
+	}
+}
+
+func TestDocs_HTML(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.SourceType, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	ct := w.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "<redoc") {
+		t.Error("body does not contain <redoc element")
+	}
+}

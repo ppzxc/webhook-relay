@@ -1,0 +1,5 @@
+extends: ["spectral:oas"]
+rules:
+  oas3-schema: error
+  operation-description: warn
+  operation-tags: warn

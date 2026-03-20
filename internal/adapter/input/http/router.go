@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"webhook-relay/internal/adapter/input/websocket"
+	"webhook-relay/internal/apidocs"
 	"webhook-relay/internal/application/port/input"
 	"webhook-relay/internal/domain"
 )
@@ -28,6 +29,9 @@ func NewRouter(uc input.ReceiveAlertUseCase, resolver SourceResolver, ws WSHandl
 	h := NewHandler(uc, resolver)
 
 	r.Get("/healthz", h.Healthz)
+	r.Get("/docs", apidocs.RedocHTMLHandler)
+	r.Get("/docs/openapi", apidocs.OpenAPIHandler)
+	r.Get("/docs/asyncapi", apidocs.AsyncAPIHandler)
 
 	r.Route("/sources/{sourceId}", func(r chi.Router) {
 		// 리터럴 /alerts/ws를 와일드카드 /alerts/{alertId}보다 먼저 등록
