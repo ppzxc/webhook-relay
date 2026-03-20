@@ -23,6 +23,10 @@ func TestOpenAPIHandler(t *testing.T) {
 	if w.Body.Len() == 0 {
 		t.Error("body is empty")
 	}
+	// placeholder는 version "0.0.0" — 실제 스펙은 "2026-03-20" 이어야 한다
+	if !strings.Contains(w.Body.String(), "webhook-relay API") {
+		t.Error("openapi.yaml does not contain expected title")
+	}
 }
 
 func TestAsyncAPIHandler(t *testing.T) {

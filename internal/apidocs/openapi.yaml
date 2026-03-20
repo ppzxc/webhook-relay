@@ -1,4 +1,385 @@
 openapi: "3.1.0"
+
 info:
-  title: placeholder
-  version: "0.0.0"
+  title: webhook-relay API
+  version: "2026-03-20"
+  description: |
+    Webhook relay hub. Receives alerts from monitoring apps (Beszel, Dozzle, etc.)
+    and forwards them to external channels via templates.
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: alerts
+    description: Alert management
+  - name: sources
+    description: Source management
+  - name: channels
+    description: Channel management
+  - name: health
+    description: Health check
+
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      operationId: healthz
+      tags: [health]
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                required: [status]
+
+  /sources/{sourceId}/alerts:
+    post:
+      summary: Receive alert
+      operationId: postAlert
+      tags: [alerts]
+      parameters:
+        - $ref: "#/components/parameters/sourceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Source-specific JSON payload
+              additionalProperties: true
+      responses:
+        "201":
+          description: Alert created
+          headers:
+            Location:
+              description: URL of the created alert
+              schema:
+                type: string
+                example: /sources/beszel/alerts/01J...
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlertCreatedResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+    get:
+      summary: List alerts for a source
+      operationId: listAlerts
+      x-status: planned
+      tags: [alerts]
+      parameters:
+        - $ref: "#/components/parameters/sourceId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Alert list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /sources/{sourceId}/alerts/{alertId}:
+    get:
+      summary: Get alert by ID
+      operationId: getAlert
+      tags: [alerts]
+      parameters:
+        - $ref: "#/components/parameters/sourceId"
+        - $ref: "#/components/parameters/alertId"
+      responses:
+        "200":
+          description: Alert found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      summary: Update alert status
+      operationId: patchAlert
+      x-status: planned
+      tags: [alerts]
+      description: |
+        Allowed transition: FAILED → PENDING (manual re-queue).
+        All other transitions return 422.
+      parameters:
+        - $ref: "#/components/parameters/sourceId"
+        - $ref: "#/components/parameters/alertId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [PENDING]
+              required: [status]
+      responses:
+        "200":
+          description: Alert updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alert"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /sources:
+    get:
+      summary: List sources
+      operationId: listSources
+      x-status: planned
+      tags: [sources]
+      responses:
+        "200":
+          description: Source list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Source"
+
+  /sources/{sourceId}:
+    get:
+      summary: Get source by ID
+      operationId: getSource
+      x-status: planned
+      tags: [sources]
+      parameters:
+        - $ref: "#/components/parameters/sourceId"
+      responses:
+        "200":
+          description: Source found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Source"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /channels:
+    get:
+      summary: List channels
+      operationId: listChannels
+      x-status: planned
+      tags: [channels]
+      responses:
+        "200":
+          description: Channel list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Channel"
+
+  /channels/{channelId}:
+    get:
+      summary: Get channel by ID
+      operationId: getChannel
+      x-status: planned
+      tags: [channels]
+      parameters:
+        - $ref: "#/components/parameters/channelId"
+      responses:
+        "200":
+          description: Channel found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Channel"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Source-specific bearer token from config
+
+  parameters:
+    sourceId:
+      name: sourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: beszel
+    alertId:
+      name: alertId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: 01J...
+    channelId:
+      name: channelId
+      in: path
+      required: true
+      schema:
+        type: string
+        example: ops-webhook
+
+  schemas:
+    AlertStatus:
+      type: string
+      enum: [PENDING, DELIVERED, FAILED]
+      description: |
+        Alert delivery status.
+        Transitions: PENDING → DELIVERED (success), PENDING → FAILED (retries exhausted),
+        FAILED → PENDING (manual re-queue via PATCH).
+
+    Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ULID
+        sourceId:
+          type: string
+        status:
+          $ref: "#/components/schemas/AlertStatus"
+        createdAt:
+          type: string
+          format: date-time
+        retryCount:
+          type: integer
+          description: Number of delivery attempts
+        lastAttemptAt:
+          type: ["string", "null"]
+          format: date-time
+      required: [id, sourceId, status, createdAt, retryCount]
+
+    AlertCreatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceId:
+          type: string
+        status:
+          $ref: "#/components/schemas/AlertStatus"
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, sourceId, status, createdAt]
+
+    Source:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [BESZEL, DOZZLE, GENERIC]
+      required: [id, type]
+
+    Channel:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [WEBHOOK, SLACK, DISCORD]
+        url:
+          type: string
+        retryCount:
+          type: integer
+        retryDelayMs:
+          type: integer
+      required: [id, type, url, retryCount, retryDelayMs]
+
+    Problem:
+      type: object
+      description: RFC 7807/9457 Problem Details
+      properties:
+        type:
+          type: string
+          example: /errors/Unauthorized
+        title:
+          type: string
+          example: Unauthorized
+        status:
+          type: integer
+          example: 401
+        detail:
+          type: string
+          example: invalid or missing token for source: beszel
+        traceId:
+          type: string
+      required: [type, title, status, detail]
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Resource not found
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PayloadTooLarge:
+      description: Request body exceeds 1MB limit
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    UnprocessableEntity:
+      description: Invalid status transition
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InternalServerError:
+      description: Unexpected server error
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
