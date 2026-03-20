@@ -8,5 +8,6 @@ type Channel struct {
 	Secret        string
 	RetryCount    int
 	RetryDelayMs  int
+	TimeoutSec    int
 	SkipTLSVerify bool
 }

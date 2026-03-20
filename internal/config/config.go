@@ -39,6 +39,7 @@ type ChannelConfig struct {
 	Template      string `mapstructure:"template"`
 	RetryCount    int    `mapstructure:"retryCount"`
 	RetryDelayMs  int    `mapstructure:"retryDelayMs"`
+	TimeoutSec    int    `mapstructure:"timeoutSec"`
 	SkipTLSVerify bool   `mapstructure:"skipTLSVerify"`
 }
 

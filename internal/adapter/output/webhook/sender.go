@@ -6,9 +6,12 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"time"
 
 	"webhook-relay/internal/domain"
 )
+
+const defaultTimeoutSec = 10
 
 type Sender struct{}
 
@@ -19,7 +22,11 @@ func (s *Sender) Send(ctx context.Context, ch domain.Channel, alert domain.Alert
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
-	client := &http.Client{}
+	timeoutSec := ch.TimeoutSec
+	if timeoutSec <= 0 {
+		timeoutSec = defaultTimeoutSec
+	}
+	client := &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
 	if ch.SkipTLSVerify {
 		client.Transport = &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec
 	}
