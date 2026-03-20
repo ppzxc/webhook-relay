@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"webhook-relay/internal/application/port/output"
@@ -15,6 +16,7 @@ type DeliveryWorker struct {
 	repo        output.AlertRepository
 	routeReader output.RouteConfigReader
 	registry    output.SenderRegistry
+	wg          sync.WaitGroup
 }
 
 func NewDeliveryWorker(
@@ -27,12 +29,19 @@ func NewDeliveryWorker(
 }
 
 func (w *DeliveryWorker) Start(ctx context.Context, workerCount int) {
+	w.wg.Add(workerCount)
 	for range workerCount {
 		go w.loop(ctx)
 	}
 }
 
+// Wait blocks until all workers finish. Call after cancelling the context.
+func (w *DeliveryWorker) Wait() {
+	w.wg.Wait()
+}
+
 func (w *DeliveryWorker) loop(ctx context.Context) {
+	defer w.wg.Done()
 	for {
 		select {
 		case <-ctx.Done():

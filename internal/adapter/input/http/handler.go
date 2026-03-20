@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,9 +43,15 @@ func (h *Handler) PostAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		writeError(w, r, http.StatusBadRequest, "Bad Request", "failed to read body")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(w, r, http.StatusRequestEntityTooLarge, "Payload Too Large", "request body exceeds 1MB limit")
+		} else {
+			writeError(w, r, http.StatusBadRequest, "Bad Request", "failed to read body")
+		}
 		return
 	}
 

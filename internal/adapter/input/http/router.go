@@ -33,6 +33,11 @@ func NewRouter(uc input.ReceiveAlertUseCase, resolver SourceResolver, ws WSHandl
 		// 리터럴 /alerts/ws를 와일드카드 /alerts/{alertId}보다 먼저 등록
 		r.Get("/alerts/ws", func(w http.ResponseWriter, req *http.Request) {
 			sourceID := chi.URLParam(req, "sourceId")
+			token := tokenFromHeader(req)
+			if token == "" || !resolver.ValidateToken(sourceID, token) {
+				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "invalid or missing token")
+				return
+			}
 			sourceType, err := resolver.Resolve(sourceID)
 			if err != nil {
 				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "unknown source")

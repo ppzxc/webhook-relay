@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -39,6 +40,7 @@ type ChannelConfig struct {
 	Template      string `mapstructure:"template"`
 	RetryCount    int    `mapstructure:"retryCount"`
 	RetryDelayMs  int    `mapstructure:"retryDelayMs"`
+	TimeoutSec    int    `mapstructure:"timeoutSec"`
 	SkipTLSVerify bool   `mapstructure:"skipTLSVerify"`
 }
 
@@ -85,7 +87,8 @@ func Watch(v *viper.Viper, onChange func(cfg *Config)) {
 	v.OnConfigChange(func(_ fsnotify.Event) {
 		cfg, err := unmarshalAndValidate(v)
 		if err != nil {
-			return // 유효하지 않은 설정 무시
+			slog.Warn("config reload rejected: invalid config", "err", err)
+			return
 		}
 		onChange(cfg)
 	})
@@ -116,6 +119,9 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshal config: %w", err)
 	}
+	if err := validateIDs(&cfg); err != nil {
+		return nil, err
+	}
 	for _, ch := range cfg.Channels {
 		if ch.Template == "" {
 			continue
@@ -125,4 +131,37 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 		}
 	}
 	return &cfg, nil
+}
+
+func validateIDs(cfg *Config) error {
+	seenSources := make(map[string]struct{}, len(cfg.Sources))
+	for _, s := range cfg.Sources {
+		if s.ID == "" {
+			return fmt.Errorf("source ID must not be empty")
+		}
+		if _, dup := seenSources[s.ID]; dup {
+			return fmt.Errorf("duplicate source ID %q", s.ID)
+		}
+		seenSources[s.ID] = struct{}{}
+	}
+
+	seenChannels := make(map[string]struct{}, len(cfg.Channels))
+	for _, c := range cfg.Channels {
+		if c.ID == "" {
+			return fmt.Errorf("channel ID must not be empty")
+		}
+		if _, dup := seenChannels[c.ID]; dup {
+			return fmt.Errorf("duplicate channel ID %q", c.ID)
+		}
+		seenChannels[c.ID] = struct{}{}
+	}
+
+	for _, rt := range cfg.Routes {
+		for _, chID := range rt.ChannelIDs {
+			if _, ok := seenChannels[chID]; !ok {
+				return fmt.Errorf("route for source %q references unknown channel %q", rt.SourceID, chID)
+			}
+		}
+	}
+	return nil
 }

@@ -80,6 +80,57 @@ channels:
 	}
 }
 
+func TestLoad_EmptySourceID(t *testing.T) {
+	yaml := `
+sources:
+  - id: ""
+    type: BESZEL
+    secret: s
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for empty source ID")
+	}
+}
+
+func TestLoad_DuplicateSourceID(t *testing.T) {
+	yaml := `
+sources:
+  - id: beszel
+    type: BESZEL
+    secret: s1
+  - id: beszel
+    type: BESZEL
+    secret: s2
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for duplicate source ID")
+	}
+}
+
+func TestLoad_RouteReferencesUnknownChannel(t *testing.T) {
+	yaml := `
+sources:
+  - id: beszel
+    type: BESZEL
+    secret: s
+channels:
+  - id: ch1
+    type: WEBHOOK
+    url: https://example.com
+    template: '{}'
+routes:
+  - sourceId: beszel
+    channelIds:
+      - nonexistent-channel
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for route referencing unknown channel")
+	}
+}
+
 func TestInMemoryRouteConfigReader(t *testing.T) {
 	cfg, _ := config.Load(writeConfig(t, testYAML))
 	reader := config.NewInMemoryRouteConfigReader(cfg)

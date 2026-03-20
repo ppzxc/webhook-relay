@@ -26,7 +26,8 @@ func (r *InMemoryRouteConfigReader) Update(cfg *Config) {
 		channels[c.ID] = domain.Channel{
 			ID: c.ID, Type: domain.ChannelType(c.Type), URL: c.URL,
 			Template: c.Template, RetryCount: c.RetryCount,
-			RetryDelayMs: c.RetryDelayMs, SkipTLSVerify: c.SkipTLSVerify,
+			RetryDelayMs: c.RetryDelayMs, TimeoutSec: c.TimeoutSec,
+			SkipTLSVerify: c.SkipTLSVerify,
 		}
 	}
 	// sourceID → sourceType mapping (e.g. "beszel" → "BESZEL")
