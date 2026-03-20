@@ -116,9 +116,16 @@ func runServer(cfgPath string) error {
 	<-sig
 	slog.Info("shutting down")
 	cancel()
-	worker.Wait()
 	shutCtx, shutCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutCancel()
+
+	waitDone := make(chan struct{})
+	go func() { worker.Wait(); close(waitDone) }()
+	select {
+	case <-waitDone:
+	case <-shutCtx.Done():
+		slog.Warn("worker drain timed out, forcing shutdown")
+	}
 	return srv.Shutdown(shutCtx)
 }
 
