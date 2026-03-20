@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"webhook-relay/internal/application/port/output"
@@ -22,7 +23,21 @@ func New(dir string) (*Queue, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("mkdir queue: %w", err)
 	}
+	recoverOrphans(dir)
 	return &Queue{dir: dir}, nil
+}
+
+// recoverOrphans는 프로세스 크래시로 잔류한 .json.processing 파일을 .json으로 복구한다.
+// at-least-once 보장을 위해 New() 호출 시 항상 실행된다.
+func recoverOrphans(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".json.processing") {
+			proc := filepath.Join(dir, e.Name())
+			orig := strings.TrimSuffix(proc, ".processing")
+			os.Rename(proc, orig)
+		}
+	}
 }
 
 func (q *Queue) Enqueue(_ context.Context, alert domain.Alert) error {
