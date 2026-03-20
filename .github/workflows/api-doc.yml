@@ -1,0 +1,39 @@
+name: Validate API Specs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "internal/apidocs/openapi.yaml"
+      - "internal/apidocs/asyncapi.yaml"
+      - ".spectral.yaml"
+  pull_request:
+    paths:
+      - "internal/apidocs/openapi.yaml"
+      - "internal/apidocs/asyncapi.yaml"
+      - ".spectral.yaml"
+
+jobs:
+  validate-openapi:
+    name: Lint OpenAPI 3.1.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Spectral lint
+        run: >
+          npx --yes @stoplight/spectral-cli@6
+          lint internal/apidocs/openapi.yaml
+          --ruleset .spectral.yaml
+          --fail-severity error
+
+  validate-asyncapi:
+    name: Validate AsyncAPI 3.0.0
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AsyncAPI validate
+        run: >
+          npx --yes @asyncapi/cli@3
+          validate internal/apidocs/asyncapi.yaml

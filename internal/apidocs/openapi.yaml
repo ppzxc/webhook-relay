@@ -347,7 +347,7 @@ components:
           example: 401
         detail:
           type: string
-          example: invalid or missing token for source: beszel
+          example: "invalid or missing token for source: beszel"
         traceId:
           type: string
       required: [type, title, status, detail]
