@@ -126,7 +126,7 @@ func runServer(cfgPath string) error {
 
 	// Application services
 	msgSvc := service.NewMessageService(repo, queue, parserTypes, parserRegistry)
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry)
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry, service.DefaultRelayWorkerConfig())
 
 	// HTTP + WebSocket adapter assembly
 	resolver := newConfigInputResolver(cfg)

@@ -96,7 +96,7 @@ func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 
 	time.Sleep(150 * time.Millisecond)
@@ -119,7 +119,7 @@ func TestRelayWorker_DeliverSuccess(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 
 	time.Sleep(150 * time.Millisecond)
@@ -145,7 +145,7 @@ func TestRelayWorker_NoRule_Nacks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -200,7 +200,7 @@ func TestRelayWorker_SendError_MarksAsFailed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -222,7 +222,7 @@ func TestRelayWorker_GracefulShutdown(t *testing.T) {
 	registry := &mockRegistry{sender: &mockSender{}}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 2)
 
 	cancel()
@@ -256,7 +256,7 @@ func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -284,7 +284,7 @@ func TestRelayWorker_FilterFalse_Skips(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -326,7 +326,7 @@ func TestRelayWorker_EmptyFilter_PassesAll(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -352,7 +352,7 @@ func TestRelayWorker_EmptyRouting_AllOutputs(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -384,7 +384,7 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -417,7 +417,7 @@ func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -459,7 +459,7 @@ func TestRelayWorker_NoTemplate_UsesRawPayload(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -504,7 +504,7 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 	worker.Start(ctx, 1)
 	time.Sleep(150 * time.Millisecond)
 
@@ -522,5 +522,93 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	}
 	if result["tag"] != "[BESZEL]" {
 		t.Errorf("tag = %v, want [BESZEL]", result["tag"])
+	}
+}
+
+// mockCountingSenderError counts Send calls and always returns an error.
+type mockCountingSenderError struct {
+	count atomic.Int32
+}
+
+func (m *mockCountingSenderError) Send(_ context.Context, _ domain.Output, _ []byte) error {
+	m.count.Add(1)
+	return errors.New("send error")
+}
+
+type mockRegistryCountingError struct{ sender *mockCountingSenderError }
+
+func (m *mockRegistryCountingError) Get(_ domain.OutputType) (output.OutputSender, error) {
+	return m.sender, nil
+}
+
+func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
+	msg := domain.Message{ID: "retry-custom", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	queue := &mockMessageQueue{messages: []domain.Message{msg}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockCountingSenderError{}
+	ruleReader := &mockRuleReader{
+		rule:    domain.Rule{InputID: "beszel"},
+		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, RetryCount: 0, RetryDelayMs: 0}},
+	}
+	registry := &mockRegistryCountingError{sender: sender}
+
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 1, DefaultRetryDelayMs: 10}
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	worker.Start(ctx, 1)
+	time.Sleep(150 * time.Millisecond)
+
+	if got := sender.count.Load(); got != 1 {
+		t.Errorf("sender called %d times, want exactly 1 (DefaultRetryCount=1)", got)
+	}
+}
+
+func TestRelayWorker_ZeroConfig_UsesDefaults(t *testing.T) {
+	msg := domain.Message{ID: "zero-cfg", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	queue := &mockMessageQueue{messages: []domain.Message{msg}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		rule:    domain.Rule{InputID: "beszel"},
+		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.RelayWorkerConfig{})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	worker.Start(ctx, 1)
+	time.Sleep(150 * time.Millisecond)
+
+	if sender.count.Load() == 0 {
+		t.Error("expected at least one send call with zero config (uses defaults)")
+	}
+}
+
+func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
+	msg := domain.Message{ID: "per-out", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	queue := &mockMessageQueue{messages: []domain.Message{msg}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockCountingSenderError{}
+	ruleReader := &mockRuleReader{
+		rule:    domain.Rule{InputID: "beszel"},
+		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, RetryCount: 1, RetryDelayMs: 10}},
+	}
+	registry := &mockRegistryCountingError{sender: sender}
+
+	// DefaultRetryCount=5 but per-output RetryCount=1 should win.
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 5, DefaultRetryDelayMs: 10}
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	worker.Start(ctx, 1)
+	time.Sleep(150 * time.Millisecond)
+
+	if got := sender.count.Load(); got != 1 {
+		t.Errorf("sender called %d times, want 1 (per-output RetryCount=1 overrides default=5)", got)
 	}
 }

@@ -20,7 +20,7 @@ type WSHandler interface {
 	ServeWS(w http.ResponseWriter, r *http.Request, inputType domain.InputType)
 }
 
-func NewRouter(uc input.ReceiveMessageUseCase, resolver InputResolver, ws WSHandler) *chi.Mux {
+func NewRouter(uc input.ReceiveMessageUseCase, resolver input.InputResolver, ws WSHandler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
