@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"webhook-relay/internal/application/port/output"
@@ -15,6 +16,7 @@ type DeliveryWorker struct {
 	repo        output.AlertRepository
 	routeReader output.RouteConfigReader
 	registry    output.SenderRegistry
+	wg          sync.WaitGroup
 }
 
 func NewDeliveryWorker(
