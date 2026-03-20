@@ -47,6 +47,33 @@ func (m *mockRegistry) Get(_ domain.ChannelType) (output.AlertSender, error) {
 	return m.sender, nil
 }
 
+func TestDeliveryWorker_UpdateDeliveryState_ErrorIsLogged(t *testing.T) {
+	// UpdateDeliveryState가 에러를 반환해도 워커가 정상 동작(send 완료, 패닉 없음)해야 한다.
+	alert := domain.Alert{ID: "w-err", Source: domain.SourceTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.AlertStatusPending, Version: 1}
+	queue := &mockAlertQueue{alerts: []domain.Alert{alert}}
+	repo := &mockRepo{
+		saveFn:   func(_ context.Context, _ domain.Alert) error { return nil },
+		updateFn: func(_ context.Context, _ string, _ domain.AlertStatus, _ int, _ time.Time) error {
+			return errors.New("db error")
+		},
+	}
+	sender := &mockSender{}
+	routeReader := &mockRouteReader{channels: []domain.Channel{{ID: "c1", Type: domain.ChannelTypeWebhook, Template: `{{ .Source }}`}}}
+	registry := &mockRegistry{sender: sender}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	worker := service.NewDeliveryWorker(queue, repo, routeReader, registry)
+	worker.Start(ctx, 1)
+
+	time.Sleep(150 * time.Millisecond)
+	// DB 에러에도 불구하고 send는 수행되어야 한다
+	if sender.count.Load() == 0 {
+		t.Error("expected send to be called despite UpdateDeliveryState error")
+	}
+}
+
 func TestDeliveryWorker_DeliverSuccess(t *testing.T) {
 	alert := domain.Alert{ID: "w1", Source: domain.SourceTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.AlertStatusPending, Version: 1}
 	queue := &mockAlertQueue{alerts: []domain.Alert{alert}}

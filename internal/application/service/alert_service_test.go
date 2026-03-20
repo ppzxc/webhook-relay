@@ -12,11 +12,15 @@ import (
 )
 
 type mockRepo struct {
-	saveFn func(context.Context, domain.Alert) error
+	saveFn   func(context.Context, domain.Alert) error
+	updateFn func(context.Context, string, domain.AlertStatus, int, time.Time) error
 }
 
 func (m *mockRepo) Save(ctx context.Context, a domain.Alert) error { return m.saveFn(ctx, a) }
-func (m *mockRepo) UpdateDeliveryState(_ context.Context, _ string, _ domain.AlertStatus, _ int, _ time.Time) error {
+func (m *mockRepo) UpdateDeliveryState(ctx context.Context, id string, s domain.AlertStatus, retry int, t time.Time) error {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, id, s, retry, t)
+	}
 	return nil
 }
 func (m *mockRepo) FindByID(_ context.Context, _ string) (domain.Alert, error) {
