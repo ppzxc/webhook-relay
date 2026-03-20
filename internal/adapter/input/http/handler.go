@@ -15,10 +15,10 @@ import (
 
 type Handler struct {
 	uc       input.ReceiveMessageUseCase
-	resolver InputResolver
+	resolver input.InputResolver
 }
 
-func NewHandler(uc input.ReceiveMessageUseCase, resolver InputResolver) *Handler {
+func NewHandler(uc input.ReceiveMessageUseCase, resolver input.InputResolver) *Handler {
 	return &Handler{uc: uc, resolver: resolver}
 }
 
