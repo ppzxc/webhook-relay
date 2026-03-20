@@ -1,0 +1,45 @@
+server:
+  port: 8080
+  readTimeout: 30s
+  writeTimeout: 30s
+  tls:
+    enabled: false
+    certFile: ""
+    keyFile: ""
+
+log:
+  level: info    # debug, info, warn, error
+  format: json   # json, text
+
+sources:
+  - id: beszel
+    type: BESZEL
+    secret: "change-me"
+  - id: dozzle
+    type: DOZZLE
+    secret: "change-me"
+
+channels:
+  - id: ops-webhook
+    type: WEBHOOK
+    url: "https://hooks.example.com/xyz"
+    template: |
+      {"text": "{{ .Source }}: {{ .Payload }}"}
+    retryCount: 3
+    retryDelayMs: 1000
+    skipTLSVerify: false
+
+routes:
+  - sourceId: beszel
+    channelIds: [ops-webhook]
+  - sourceId: dozzle
+    channelIds: [ops-webhook]
+
+storage:
+  type: SQLITE
+  path: "./data/webhook-relay.db"
+
+queue:
+  type: FILE
+  path: "./data/queue"
+  workerCount: 2
