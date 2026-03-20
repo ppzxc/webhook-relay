@@ -9,6 +9,7 @@ import (
 )
 
 // ExprEngine implements ExpressionEngine using expr-lang/expr.
+// All expressions access input data via the "data" prefix (e.g., data.id, data["key"]).
 type ExprEngine struct {
 	cache sync.Map // expression string -> *vm.Program
 }
@@ -25,7 +26,7 @@ func (e *ExprEngine) Evaluate(expression string, data map[string]any) (any, erro
 	if err != nil {
 		return nil, err
 	}
-	out, err := expr.Run(prg, data)
+	out, err := expr.Run(prg, map[string]any{"data": data})
 	if err != nil {
 		return nil, fmt.Errorf("expr eval: %w", err)
 	}
@@ -64,6 +65,6 @@ func (e *ExprEngine) getOrCompile(expression string) (*vm.Program, error) {
 	if err != nil {
 		return nil, fmt.Errorf("expr compile: %w", err)
 	}
-	e.cache.Store(expression, prg)
-	return prg, nil
+	actual, _ := e.cache.LoadOrStore(expression, prg)
+	return actual.(*vm.Program), nil
 }

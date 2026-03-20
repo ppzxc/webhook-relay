@@ -100,7 +100,8 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 		}
 	}
 
-	// 2. Mapping: apply mapping expressions to enrich data
+	// 2. Mapping: evaluate all mapping expressions against the original data (parallel semantics).
+	// All expressions see the same pre-mapping state; cross-key dependencies are not supported.
 	mappedData := copyMap(data)
 	for key, expr := range rule.Mapping {
 		val, err := engine.Evaluate(expr, data)
@@ -136,6 +137,17 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 			}
 		}
 	}
+
+	// Deduplicate outputs to prevent double-sending when multiple routing conditions match the same output
+	seen := make(map[string]struct{}, len(routedOutputs))
+	deduped := routedOutputs[:0]
+	for _, o := range routedOutputs {
+		if _, ok := seen[o.ID]; !ok {
+			seen[o.ID] = struct{}{}
+			deduped = append(deduped, o)
+		}
+	}
+	routedOutputs = deduped
 
 	// 4. Deliver to each routed output
 	success := true
@@ -236,7 +248,11 @@ func (w *RelayWorker) buildPayload(engine output.ExpressionEngine, template map[
 
 func (w *RelayWorker) getEngine(engineType string) (output.ExpressionEngine, error) {
 	if engineType == "" {
-		return w.exprRegistry.Default(), nil
+		eng := w.exprRegistry.Default()
+		if eng == nil {
+			return nil, fmt.Errorf("no default expression engine registered")
+		}
+		return eng, nil
 	}
 	return w.exprRegistry.Get(engineType)
 }

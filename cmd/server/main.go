@@ -73,7 +73,10 @@ func runServer(cfgPath string) error {
 
 	// Expression engine registry
 	exprRegistry := expression.NewInMemoryExpressionEngineRegistry()
-	celEngine := expression.NewCELEngine()
+	celEngine, err := expression.NewCELEngine()
+	if err != nil {
+		return fmt.Errorf("init CEL engine: %w", err)
+	}
 	exprEngine := expression.NewExprEngine()
 	exprRegistry.Register(celEngine)
 	exprRegistry.Register(exprEngine)

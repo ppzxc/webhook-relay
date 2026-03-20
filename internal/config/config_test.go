@@ -23,7 +23,7 @@ outputs:
     type: WEBHOOK
     url: https://hooks.example.com/test
     template:
-      text: 'input + ": " + payload'
+      text: 'data.input + ": " + data.payload'
     retryCount: 3
     retryDelayMs: 500
 rules:
@@ -63,7 +63,7 @@ func TestLoad(t *testing.T) {
 	if len(cfg.Rules) != 1 {
 		t.Errorf("rules = %+v", cfg.Rules)
 	}
-	if cfg.Outputs[0].Template["text"] != `input + ": " + payload` {
+	if cfg.Outputs[0].Template["text"] != `data.input + ": " + data.payload` {
 		t.Errorf("template = %+v", cfg.Outputs[0].Template)
 	}
 }
@@ -149,11 +149,11 @@ outputs:
 rules:
   - inputId: beszel
     engine: expr
-    filter: 'status == "CRITICAL"'
+    filter: 'data.status == "CRITICAL"'
     mapping:
       severity: '"HIGH"'
     routing:
-      - condition: 'severity == "HIGH"'
+      - condition: 'data.severity == "HIGH"'
         outputIds: [ch1]
 storage:
   type: SQLITE
@@ -172,7 +172,7 @@ queue:
 	if cfg.Rules[0].Engine != "expr" {
 		t.Errorf("rule engine = %q, want expr", cfg.Rules[0].Engine)
 	}
-	if cfg.Rules[0].Filter != `status == "CRITICAL"` {
+	if cfg.Rules[0].Filter != `data.status == "CRITICAL"` {
 		t.Errorf("filter = %q", cfg.Rules[0].Filter)
 	}
 	if len(cfg.Rules[0].Routing) != 1 {
@@ -187,7 +187,7 @@ queue:
 	if rule.Engine != "expr" {
 		t.Errorf("rule.Engine = %q, want expr", rule.Engine)
 	}
-	if rule.Filter != `status == "CRITICAL"` {
+	if rule.Filter != `data.status == "CRITICAL"` {
 		t.Errorf("rule.Filter = %q", rule.Filter)
 	}
 	if len(rule.Routing) != 1 {

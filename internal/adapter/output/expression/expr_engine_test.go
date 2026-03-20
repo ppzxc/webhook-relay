@@ -19,7 +19,7 @@ func TestExprEngine_Type(t *testing.T) {
 func TestExprEngine_EvaluateString(t *testing.T) {
 	e := expression.NewExprEngine()
 	data := map[string]any{"name": "world"}
-	got, err := e.EvaluateString(`"hello " + name`, data)
+	got, err := e.EvaluateString(`"hello " + data.name`, data)
 	if err != nil {
 		t.Fatalf("EvaluateString error: %v", err)
 	}
@@ -32,7 +32,7 @@ func TestExprEngine_EvaluateBool(t *testing.T) {
 	e := expression.NewExprEngine()
 	data := map[string]any{"status": "CRITICAL"}
 
-	got, err := e.EvaluateBool(`status == "CRITICAL"`, data)
+	got, err := e.EvaluateBool(`data.status == "CRITICAL"`, data)
 	if err != nil {
 		t.Fatalf("EvaluateBool error: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestExprEngine_EvaluateBool(t *testing.T) {
 		t.Error("expected true")
 	}
 
-	got, err = e.EvaluateBool(`status == "OK"`, data)
+	got, err = e.EvaluateBool(`data.status == "OK"`, data)
 	if err != nil {
 		t.Fatalf("EvaluateBool error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestExprEngine_EvaluateBool(t *testing.T) {
 func TestExprEngine_EvaluateNumeric(t *testing.T) {
 	e := expression.NewExprEngine()
 	data := map[string]any{"a": 10, "b": 20}
-	got, err := e.Evaluate(`a + b`, data)
+	got, err := e.Evaluate(`data.a + data.b`, data)
 	if err != nil {
 		t.Fatalf("Evaluate error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestExprEngine_CacheHit(t *testing.T) {
 	e := expression.NewExprEngine()
 	data := map[string]any{"x": "a"}
 	for i := range 3 {
-		got, err := e.EvaluateString(`x`, data)
+		got, err := e.EvaluateString(`data.x`, data)
 		if err != nil {
 			t.Fatalf("iteration %d: %v", i, err)
 		}
@@ -105,7 +105,7 @@ func TestExprEngine_MapData(t *testing.T) {
 		"payload": `{"host":"server1"}`,
 		"input":   "BESZEL",
 	}
-	got, err := e.EvaluateString(`input + ": " + payload`, data)
+	got, err := e.EvaluateString(`data.input + ": " + data.payload`, data)
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}

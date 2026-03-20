@@ -42,7 +42,11 @@ func (r *configInputResolver) ValidateToken(id, token string) bool {
 
 func newExprRegistry() output.ExpressionEngineRegistry {
 	reg := expression.NewInMemoryExpressionEngineRegistry()
-	reg.Register(expression.NewCELEngine())
+	celEng, err := expression.NewCELEngine()
+	if err != nil {
+		panic("NewCELEngine: " + err.Error())
+	}
+	reg.Register(celEng)
 	reg.Register(expression.NewExprEngine())
 	return reg
 }
@@ -65,7 +69,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 		Outputs: []cfgpkg.OutputConfig{{
 			ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL,
 			Template: map[string]string{
-				"src": `input`,
+				"src": `data.input`,
 			},
 			RetryCount: 1, RetryDelayMs: 10,
 		}},

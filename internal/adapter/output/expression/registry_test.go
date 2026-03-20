@@ -11,7 +11,7 @@ var _ output.ExpressionEngineRegistry = (*expression.InMemoryExpressionEngineReg
 
 func TestRegistry_GetAndDefault(t *testing.T) {
 	reg := expression.NewInMemoryExpressionEngineRegistry()
-	celEng := expression.NewCELEngine()
+	celEng := newCELEngine(t)
 	exprEng := expression.NewExprEngine()
 
 	reg.Register(celEng)
@@ -38,7 +38,7 @@ func TestRegistry_GetAndDefault(t *testing.T) {
 
 func TestRegistry_SetDefault(t *testing.T) {
 	reg := expression.NewInMemoryExpressionEngineRegistry()
-	reg.Register(expression.NewCELEngine())
+	reg.Register(newCELEngine(t))
 	reg.Register(expression.NewExprEngine())
 
 	if err := reg.SetDefault("expr"); err != nil {

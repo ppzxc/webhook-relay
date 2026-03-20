@@ -29,7 +29,7 @@ outputs:
     type: WEBHOOK
     url: "https://hooks.example.com/xyz"
     template:
-      text: 'input + ": " + payload'
+      text: 'data.input + ": " + data.payload'
     retryCount: 3
     retryDelayMs: 1000
     skipTLSVerify: false
@@ -37,11 +37,11 @@ outputs:
 rules:
   - inputId: beszel
     engine: cel           # override default engine per rule
-    filter: 'input == "BESZEL"'
+    filter: 'data.input == "BESZEL"'
     mapping:
       severity: '"HIGH"'
     routing:
-      - condition: 'severity == "HIGH"'
+      - condition: 'data.severity == "HIGH"'
         outputIds: [ops-webhook]
   - inputId: dozzle
     outputIds: [ops-webhook]  # simple: no filter/routing, send to all

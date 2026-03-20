@@ -68,7 +68,11 @@ func (m *mockRegistryFn) Get(_ domain.OutputType) (output.OutputSender, error) {
 
 func newExprRegistry() output.ExpressionEngineRegistry {
 	reg := expression.NewInMemoryExpressionEngineRegistry()
-	reg.Register(expression.NewCELEngine())
+	celEng, err := expression.NewCELEngine()
+	if err != nil {
+		panic("NewCELEngine: " + err.Error())
+	}
+	reg.Register(celEng)
 	reg.Register(expression.NewExprEngine())
 	return reg
 }
@@ -244,7 +248,7 @@ func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: `input == "BESZEL"`},
+		rule:    domain.Rule{InputID: "beszel", Filter: `data.input == "BESZEL"`},
 		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
 	}
 	registry := &mockRegistry{sender: sender}
@@ -272,7 +276,7 @@ func TestRelayWorker_FilterFalse_Skips(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: `input == "NONEXISTENT"`},
+		rule:    domain.Rule{InputID: "beszel", Filter: `data.input == "NONEXISTENT"`},
 		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
 	}
 	registry := &mockRegistry{sender: sender}
@@ -366,8 +370,8 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 		rule: domain.Rule{
 			InputID: "beszel",
 			Routing: []domain.RouteCondition{
-				{Condition: `input == "BESZEL"`, OutputIDs: []string{"c1"}},
-				{Condition: `input == "DOZZLE"`, OutputIDs: []string{"c2"}},
+				{Condition: `data.input == "BESZEL"`, OutputIDs: []string{"c1"}},
+				{Condition: `data.input == "DOZZLE"`, OutputIDs: []string{"c2"}},
 			},
 		},
 		outputs: []domain.Output{
@@ -403,8 +407,8 @@ func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 		outputs: []domain.Output{{
 			ID: "c1", Type: domain.OutputTypeWebhook,
 			Template: map[string]string{
-				"src": `input`,
-				"msg": `"alert from " + input`,
+				"src": `data.input`,
+				"msg": `"alert from " + data.input`,
 			},
 		}},
 	}
@@ -485,13 +489,13 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 		rule: domain.Rule{
 			InputID: "beszel",
 			Mapping: map[string]string{
-				"upperInput": `"[" + input + "]"`,
+				"upperInput": `"[" + data.input + "]"`,
 			},
 		},
 		outputs: []domain.Output{{
 			ID: "c1", Type: domain.OutputTypeWebhook,
 			Template: map[string]string{
-				"tag": `upperInput`,
+				"tag": `data.upperInput`,
 			},
 		}},
 	}

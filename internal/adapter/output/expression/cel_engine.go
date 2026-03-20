@@ -10,13 +10,24 @@ import (
 )
 
 // CELEngine implements ExpressionEngine using google/cel-go.
+// A single cel.Env is built at construction time with a "data" variable of type map(string, dyn).
+// All expressions access input data via the "data" prefix (e.g., data.id, data["key"]).
+// This avoids cache collisions caused by different runtime data schemas sharing the same expression key.
 type CELEngine struct {
-	cache sync.Map // expression string -> *cel.Ast
+	env   *cel.Env  // built once at construction
+	cache sync.Map  // expression string -> cel.Program
 }
 
 // NewCELEngine creates a new CEL expression engine.
-func NewCELEngine() *CELEngine {
-	return &CELEngine{}
+// Returns an error if the CEL environment cannot be created.
+func NewCELEngine() (*CELEngine, error) {
+	env, err := cel.NewEnv(
+		cel.Variable("data", cel.MapType(cel.StringType, cel.DynType)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create CEL env: %w", err)
+	}
+	return &CELEngine{env: env}, nil
 }
 
 func (e *CELEngine) Type() string { return "cel" }
@@ -51,67 +62,30 @@ func (e *CELEngine) EvaluateString(expression string, data map[string]any) (stri
 	return val.Value().(string), nil
 }
 
-type celCached struct {
-	env *cel.Env
-	ast *cel.Ast
-	prg cel.Program
-}
-
 func (e *CELEngine) eval(expression string, data map[string]any) (ref.Val, error) {
-	cached, err := e.getOrCompile(expression, data)
+	prog, err := e.getOrCompile(expression)
 	if err != nil {
 		return nil, err
 	}
-	out, _, err := cached.prg.Eval(data)
+	out, _, err := prog.Eval(map[string]any{"data": data})
 	if err != nil {
 		return nil, fmt.Errorf("cel eval: %w", err)
 	}
 	return out, nil
 }
 
-func (e *CELEngine) getOrCompile(expression string, data map[string]any) (*celCached, error) {
+func (e *CELEngine) getOrCompile(expression string) (cel.Program, error) {
 	if v, ok := e.cache.Load(expression); ok {
-		return v.(*celCached), nil
+		return v.(cel.Program), nil
 	}
-
-	// Build variable declarations from data keys
-	opts := make([]cel.EnvOption, 0, len(data))
-	for k, v := range data {
-		opts = append(opts, cel.Variable(k, celTypeFromGo(v)))
+	ast, iss := e.env.Compile(expression)
+	if iss != nil && iss.Err() != nil {
+		return nil, fmt.Errorf("cel compile %q: %w", expression, iss.Err())
 	}
-
-	env, err := cel.NewEnv(opts...)
+	prog, err := e.env.Program(ast)
 	if err != nil {
-		return nil, fmt.Errorf("cel env: %w", err)
+		return nil, fmt.Errorf("cel program %q: %w", expression, err)
 	}
-	ast, iss := env.Parse(expression)
-	if iss.Err() != nil {
-		return nil, fmt.Errorf("cel parse: %w", iss.Err())
-	}
-	prg, err := env.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("cel program: %w", err)
-	}
-	c := &celCached{env: env, ast: ast, prg: prg}
-	e.cache.Store(expression, c)
-	return c, nil
-}
-
-func celTypeFromGo(v any) *cel.Type {
-	switch v.(type) {
-	case bool:
-		return cel.BoolType
-	case int, int32, int64:
-		return cel.IntType
-	case float32, float64:
-		return cel.DoubleType
-	case string:
-		return cel.StringType
-	case []any:
-		return cel.ListType(cel.DynType)
-	case map[string]any:
-		return cel.MapType(cel.StringType, cel.DynType)
-	default:
-		return cel.DynType
-	}
+	actual, _ := e.cache.LoadOrStore(expression, prog)
+	return actual.(cel.Program), nil
 }

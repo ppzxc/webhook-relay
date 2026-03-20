@@ -170,6 +170,14 @@ func validateIDs(cfg *Config) error {
 				return fmt.Errorf("rule for input %q references unknown output %q", rt.InputID, outID)
 			}
 		}
+		// Validate routing condition output IDs
+		for _, rc := range rt.Routing {
+			for _, outID := range rc.OutputIDs {
+				if _, ok := seenOutputs[outID]; !ok {
+					return fmt.Errorf("rule for input %q routing condition references unknown output %q", rt.InputID, outID)
+				}
+			}
+		}
 	}
 	return nil
 }
