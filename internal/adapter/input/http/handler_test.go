@@ -243,6 +243,19 @@ func TestDocs_AsyncAPI(t *testing.T) {
 	}
 }
 
+func TestGetMessageByID_Returns501(t *testing.T) {
+	router := newTestRouter(func(_ context.Context, _ domain.InputType, _ string, _ []byte) (string, error) {
+		return "", nil
+	})
+	req := httptest.NewRequest(http.MethodGet, "/inputs/beszel/messages/some-id", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusNotImplemented {
+		t.Errorf("status = %d, want 501", w.Code)
+	}
+}
+
 func TestDocs_HTML(t *testing.T) {
 	router := newTestRouter(func(_ context.Context, _ domain.InputType, _ string, _ []byte) (string, error) {
 		return "", nil

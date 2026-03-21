@@ -44,7 +44,10 @@ func NewRouter(uc input.ReceiveMessageUseCase, resolver input.InputResolver, ws 
 			ws.ServeWS(w, req, inputTypeFromContext(req.Context()))
 		})
 		r.Post("/messages", h.PostMessage)
-		r.Get("/messages/{messageId}", h.Healthz) // placeholder
+		r.Get("/messages/{messageId}", func(w http.ResponseWriter, r *http.Request) {
+			writeError(w, r, http.StatusNotImplemented, "Not Implemented",
+				"get message by ID is not yet implemented")
+		})
 	})
 
 	return r
