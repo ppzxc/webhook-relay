@@ -8,10 +8,3 @@ const (
 	InputTypeGeneric InputType = "GENERIC"
 )
 
-func (s InputType) IsValid() bool {
-	switch s {
-	case InputTypeBeszel, InputTypeDozzle, InputTypeGeneric:
-		return true
-	}
-	return false
-}
