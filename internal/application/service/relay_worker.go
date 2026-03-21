@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -258,9 +259,25 @@ func (w *RelayWorker) buildPayload(engine output.ExpressionEngine, template map[
 		if err != nil {
 			return nil, fmt.Errorf("template key %q: %w", key, err)
 		}
-		result[key] = val
+		setNested(result, key, val)
 	}
 	return json.Marshal(result)
+}
+
+// setNested writes val into m using dot-notation key as a path.
+// "a.b.c" creates m["a"]["b"]["c"] = val.
+// Keys without dots behave identically to m[key] = val.
+func setNested(m map[string]any, key string, val any) {
+	parts := strings.Split(key, ".")
+	for _, p := range parts[:len(parts)-1] {
+		child, ok := m[p].(map[string]any)
+		if !ok {
+			child = make(map[string]any)
+			m[p] = child
+		}
+		m = child
+	}
+	m[parts[len(parts)-1]] = val
 }
 
 func (w *RelayWorker) getEngine(engineType string) (output.ExpressionEngine, error) {

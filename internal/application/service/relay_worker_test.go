@@ -691,3 +691,63 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 		t.Error("builtin key 'input' was overwritten by ParsedData — filter failed when it should have passed")
 	}
 }
+
+func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
+	// template with dot-notation keys must produce nested JSON.
+	// e.g. "content.type" + "content.text" → {"content": {"type": "text", "text": "..."}}
+	msg := domain.Message{
+		ID:      "nested-tmpl",
+		Input:   domain.InputTypeBeszel,
+		Payload: domain.RawPayload(`{"host":"server1"}`),
+		Status:  domain.MessageStatusPending,
+		Version: 1,
+	}
+	queue := &mockMessageQueue{messages: []domain.Message{msg}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		rule: domain.Rule{InputID: "beszel"},
+		outputs: []domain.Output{{
+			ID:   "naver-works",
+			Type: domain.OutputTypeWebhook,
+			Template: map[string]string{
+				"content.type": `"text"`,
+				"content.text": `data.input + " alert: " + data.payload`,
+			},
+		}},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 1)
+	time.Sleep(150 * time.Millisecond)
+
+	if sender.count.Load() == 0 {
+		t.Fatal("expected sender to be called")
+	}
+
+	sender.mu.Lock()
+	payload := sender.payloads[0]
+	sender.mu.Unlock()
+
+	// Verify nested structure: {"content": {"type": "text", "text": "BESZEL alert: ..."}}
+	var got map[string]any
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, ok := got["content"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected got[\"content\"] to be map[string]any, got %T; payload=%s", got["content"], payload)
+	}
+	if content["type"] != "text" {
+		t.Errorf("content.type = %q, want %q", content["type"], "text")
+	}
+	wantPrefix := "BESZEL alert: "
+	text, _ := content["text"].(string)
+	if len(text) == 0 || text[:len(wantPrefix)] != wantPrefix {
+		t.Errorf("content.text = %q, want prefix %q", text, wantPrefix)
+	}
+}

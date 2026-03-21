@@ -40,6 +40,20 @@ outputs:
     retryDelayMs: 1000
     skipTLSVerify: false
 
+  # Naver Works Bot — textToAll
+  # POST /api/v1/bots/{botId}/text → {"content": {"type": "text", "text": "..."}}
+  # Dot-notation keys (content.type, content.text) produce nested JSON.
+  - id: naver-works-bot
+    type: WEBHOOK
+    url: "https://naver-works-bot.nanoit.kr/api/v1/bots/1/text"
+    secret: "change-me-jwt-token"   # Bearer JWT issued by Naver Works
+    template:
+      content.type: '"text"'
+      content.text: 'data.input + " alert: " + data.payload'
+    retryCount: 3
+    retryDelayMs: 1000
+    timeoutSec: 10
+
 rules:
   - inputId: beszel
     engine: cel           # override default engine per rule
@@ -51,6 +65,12 @@ rules:
         outputIds: [ops-webhook]
   - inputId: dozzle
     outputIds: [ops-webhook]  # simple: no filter/routing, send to all
+
+  # Example: forward both Beszel and Dozzle alerts to Naver Works Bot
+  # - inputId: beszel
+  #   outputIds: [naver-works-bot]
+  # - inputId: dozzle
+  #   outputIds: [naver-works-bot]
 
 storage:
   type: SQLITE
