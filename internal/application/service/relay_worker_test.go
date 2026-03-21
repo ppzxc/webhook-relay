@@ -612,3 +612,47 @@ func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
 		t.Errorf("sender called %d times, want 1 (per-output RetryCount=1 overrides default=5)", got)
 	}
 }
+
+func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
+	// DELIVERED→DELIVERED is an invalid transition; UpdateDeliveryState must NOT be called.
+	msg := domain.Message{
+		ID: "already-delivered", Input: domain.InputTypeBeszel,
+		Payload: domain.RawPayload(`{}`),
+		Status:  domain.MessageStatusDelivered, // already terminal
+		Version: 1,
+	}
+	var ackCalled atomic.Bool
+	queue := &mockMessageQueueWithAckNack{
+		msg:    msg,
+		ackFn:  func() error { ackCalled.Store(true); return nil },
+		nackFn: func() error { return nil },
+	}
+
+	var updateCount atomic.Int32
+	repo := &mockRepo{
+		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
+		updateFn: func(_ context.Context, _ string, _ domain.MessageStatus, _ int, _ time.Time) error {
+			updateCount.Add(1)
+			return nil
+		},
+	}
+	ruleReader := &mockRuleReader{
+		rule:    domain.Rule{InputID: "beszel"},
+		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+	}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 1)
+	time.Sleep(150 * time.Millisecond)
+
+	if n := updateCount.Load(); n != 0 {
+		t.Errorf("UpdateDeliveryState called %d times, want 0 (invalid transition must be skipped)", n)
+	}
+	if !ackCalled.Load() {
+		t.Error("expected ack to be called regardless of invalid transition")
+	}
+}

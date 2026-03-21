@@ -26,7 +26,7 @@ func NewRouter(uc input.ReceiveMessageUseCase, resolver input.InputResolver, ws 
 	r.Use(middleware.RequestID)
 	r.Use(apiVersionMiddleware(APIVersion))
 
-	h := NewHandler(uc, resolver)
+	h := NewHandler(uc)
 
 	r.Get("/healthz", h.Healthz)
 	r.Get("/docs", apidocs.RedocHTMLHandler)
@@ -34,24 +34,14 @@ func NewRouter(uc input.ReceiveMessageUseCase, resolver input.InputResolver, ws 
 	r.Get("/docs/asyncapi", apidocs.AsyncAPIHandler)
 
 	r.Route("/inputs/{inputId}", func(r chi.Router) {
+		r.Use(inputAuthMiddleware(resolver))
 		// 리터럴 /messages/ws를 와일드카드 /messages/{messageId}보다 먼저 등록
 		r.Get("/messages/ws", func(w http.ResponseWriter, req *http.Request) {
-			inputID := chi.URLParam(req, "inputId")
-			token := tokenFromHeader(req)
-			if token == "" || !resolver.ValidateToken(inputID, token) {
-				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "invalid or missing token")
-				return
-			}
-			inputType, err := resolver.Resolve(inputID)
-			if err != nil {
-				writeError(w, req, http.StatusUnauthorized, "Unauthorized", "unknown input")
-				return
-			}
 			if ws == nil {
 				writeError(w, req, http.StatusNotImplemented, "Not Implemented", "websocket not configured")
 				return
 			}
-			ws.ServeWS(w, req, inputType)
+			ws.ServeWS(w, req, inputTypeFromContext(req.Context()))
 		})
 		r.Post("/messages", h.PostMessage)
 		r.Get("/messages/{messageId}", h.Healthz) // placeholder

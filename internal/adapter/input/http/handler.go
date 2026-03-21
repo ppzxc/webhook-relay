@@ -14,34 +14,16 @@ import (
 )
 
 type Handler struct {
-	uc       input.ReceiveMessageUseCase
-	resolver input.InputResolver
+	uc input.ReceiveMessageUseCase
 }
 
-func NewHandler(uc input.ReceiveMessageUseCase, resolver input.InputResolver) *Handler {
-	return &Handler{uc: uc, resolver: resolver}
+func NewHandler(uc input.ReceiveMessageUseCase) *Handler {
+	return &Handler{uc: uc}
 }
 
 func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 	inputID := chi.URLParam(r, "inputId")
-	token := tokenFromHeader(r)
-
-	if token == "" {
-		writeError(w, r, http.StatusUnauthorized, "Unauthorized", "missing or empty bearer token")
-		return
-	}
-
-	if !h.resolver.ValidateToken(inputID, token) {
-		writeError(w, r, http.StatusUnauthorized, "Unauthorized",
-			fmt.Sprintf("invalid or missing token for input: %s", inputID))
-		return
-	}
-
-	inputType, err := h.resolver.Resolve(inputID)
-	if err != nil {
-		mapError(w, r, err)
-		return
-	}
+	inputType := inputTypeFromContext(r.Context())
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1MB
 	body, err := io.ReadAll(r.Body)

@@ -4,14 +4,49 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
+	"relaybox/internal/application/port/input"
 	"relaybox/internal/domain"
 )
 
 type contextKey string
 
-const traceIDKey contextKey = "traceID"
+const (
+	traceIDKey   contextKey = "traceID"
+	inputTypeKey contextKey = "inputType"
+)
+
+func inputTypeFromContext(ctx context.Context) domain.InputType {
+	return ctx.Value(inputTypeKey).(domain.InputType)
+}
+
+func inputAuthMiddleware(resolver input.InputResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			inputID := chi.URLParam(r, "inputId")
+			token := tokenFromHeader(r)
+			if token == "" {
+				writeError(w, r, http.StatusUnauthorized, "Unauthorized", "missing or empty bearer token")
+				return
+			}
+			if !resolver.ValidateToken(inputID, token) {
+				writeError(w, r, http.StatusUnauthorized, "Unauthorized",
+					fmt.Sprintf("invalid or missing token for input: %s", inputID))
+				return
+			}
+			inputType, err := resolver.Resolve(inputID)
+			if err != nil {
+				mapError(w, r, err)
+				return
+			}
+			ctx := context.WithValue(r.Context(), inputTypeKey, inputType)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
 
 type errorResponse struct {
 	Type    string `json:"type"`

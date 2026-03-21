@@ -169,18 +169,26 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 
 	now := time.Now().UTC()
 	if success {
+		if msg.Status.CanTransitionTo(domain.MessageStatusDelivered) {
+			if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusDelivered, msg.RetryCount, now); err != nil {
+				slog.Error("failed to update delivery state to delivered", "messageID", msg.ID, "err", err)
+			}
+		} else {
+			slog.Warn("invalid status transition, skipping update", "messageID", msg.ID, "from", msg.Status, "to", domain.MessageStatusDelivered)
+		}
 		if err := ack(); err != nil {
 			slog.Warn("ack failed", "messageID", msg.ID, "err", err)
 		}
-		if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusDelivered, msg.RetryCount, now); err != nil {
-			slog.Error("failed to update delivery state to delivered", "messageID", msg.ID, "err", err)
-		}
 	} else {
+		if msg.Status.CanTransitionTo(domain.MessageStatusFailed) {
+			if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusFailed, msg.RetryCount+1, now); err != nil {
+				slog.Error("failed to update delivery state to failed", "messageID", msg.ID, "err", err)
+			}
+		} else {
+			slog.Warn("invalid status transition, skipping update", "messageID", msg.ID, "from", msg.Status, "to", domain.MessageStatusFailed)
+		}
 		if err := nack(); err != nil {
 			slog.Warn("nack failed", "messageID", msg.ID, "err", err)
-		}
-		if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusFailed, msg.RetryCount+1, now); err != nil {
-			slog.Error("failed to update delivery state to failed", "messageID", msg.ID, "err", err)
 		}
 	}
 	return nil
