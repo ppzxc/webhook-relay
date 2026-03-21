@@ -206,6 +206,67 @@ func TestListener_GracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestListener_MaxMessageSize_Accepted(t *testing.T) {
+	// A message body of exactly (maxMessageBytes - 1) bytes (+ delimiter) must be delivered.
+	mock := &mockReceiveUseCase{returnID: "msg-1"}
+	addr, _ := startTestListener(t, '\n', "application/json", mock)
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// payload = maxMessageBytes - 1 bytes, then delimiter
+	payload := make([]byte, maxMessageBytes-1)
+	for i := range payload {
+		payload[i] = 'x'
+	}
+	payload = append(payload, '\n')
+
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	calls, err := waitForCalls(mock, 1, 3*time.Second)
+	if err != nil {
+		t.Fatalf("message not received: %v", err)
+	}
+	if len(calls[0].body) != maxMessageBytes-1 {
+		t.Errorf("body len = %d, want %d", len(calls[0].body), maxMessageBytes-1)
+	}
+}
+
+func TestListener_MaxMessageSize_Exceeded(t *testing.T) {
+	// A message body exceeding maxMessageBytes must be silently dropped by the scanner.
+	mock := &mockReceiveUseCase{returnID: "msg-1"}
+	addr, _ := startTestListener(t, '\n', "application/json", mock)
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+
+	// payload = maxMessageBytes + 1 bytes, then delimiter — scanner will reject this
+	payload := make([]byte, maxMessageBytes+1)
+	for i := range payload {
+		payload[i] = 'x'
+	}
+	payload = append(payload, '\n')
+
+	if _, err := conn.Write(payload); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	// Wait and verify no calls were recorded
+	time.Sleep(500 * time.Millisecond)
+	calls := mock.getCalls()
+	if len(calls) != 0 {
+		t.Errorf("expected 0 calls for oversized message, got %d", len(calls))
+	}
+}
+
 func TestListener_EmptyMessageSkip(t *testing.T) {
 	mock := &mockReceiveUseCase{returnID: "msg-1"}
 	addr, _ := startTestListener(t, '\n', "application/json", mock)
