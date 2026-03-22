@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -56,11 +58,15 @@ func runServer(cfgPath string) error {
 	setupLogger(cfg)
 
 	// Outbound adapters
-	repo, err := sqliteadapter.New(cfg.Storage.Path)
+	repo, repoCloser, err := newRepository(cfg.Storage)
 	if err != nil {
-		return fmt.Errorf("init sqlite: %w", err)
+		return fmt.Errorf("init repository: %w", err)
 	}
-	defer repo.Close()
+	defer func() {
+		if err := repoCloser.Close(); err != nil {
+			slog.Error("repository close error", "err", err)
+		}
+	}()
 
 	queue, err := filequeue.New(cfg.Queue.Path)
 	if err != nil {
@@ -248,4 +254,17 @@ func setupLogger(cfg *cfgpkg.Config) {
 		h = slog.NewTextHandler(os.Stdout, opts)
 	}
 	slog.SetDefault(slog.New(h))
+}
+
+func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Closer, error) {
+	switch strings.ToUpper(cfg.Type) {
+	case "SQLITE":
+		repo, err := sqliteadapter.New(cfg.Path)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sqlite repository: %w", err)
+		}
+		return repo, repo, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported storage type: %q", cfg.Type)
+	}
 }

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"relaybox/internal/adapter/output/sqlite/db"
 	"relaybox/internal/domain"
 )
@@ -22,7 +22,7 @@ type Repository struct {
 }
 
 func New(dsn string) (*Repository, error) {
-	sqlDB, err := sql.Open("sqlite3", dsn)
+	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
