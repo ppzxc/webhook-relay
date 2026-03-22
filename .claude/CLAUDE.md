@@ -47,7 +47,7 @@ cmd/server/main.go               ← DI 조립, cobra CLI
 
 | 경로 | 역할 |
 |------|------|
-| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`InputType`, `MessageStatus`, `OutputType`), 센티넬 에러, 템플릿 렌더링 |
+| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`InputType`, `MessageStatus`, `OutputType`), 센티넬 에러 |
 | `internal/application/port/input/` | `ReceiveMessageUseCase` 인터페이스 |
 | `internal/application/port/output/` | `MessageRepository`, `MessageQueue`, `OutputSender`, `OutputRegistry`, `RuleConfigReader` 인터페이스 |
 | `internal/application/service/` | `MessageService`(Receive), `RelayWorker`(Start) |

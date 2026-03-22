@@ -56,7 +56,7 @@ components:
         description: |
           Input-specific JSON payload. Structure varies by input type.
           The relay stores and forwards this payload as-is, applying the
-          output's Go text/template for transformation on delivery.
+          output's CEL/Expr expression template for transformation on delivery.
         additionalProperties: true
         examples:
           - summary: Beszel message example

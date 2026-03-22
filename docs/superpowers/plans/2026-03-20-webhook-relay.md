@@ -478,148 +478,21 @@ git commit -m "feat(domain): add entities, enums, and sentinel errors"
 
 ---
 
-## Task 3: 도메인 — 템플릿 렌더링
+## Task 3: 페이로드 렌더링 — CEL/Expr 표현식 템플릿
 
-**Files:**
-- Create: `internal/domain/template.go`
-- Test: `internal/domain/template_test.go`
+> **Note:** 초기 설계에서 `text/template` 기반 도메인 헬퍼를 사용하는 방식을 검토했으나,
+> 최종 구현에서는 CEL/Expr 표현식 엔진으로 전환되었다. `domain/template.go` 파일은 생성되지 않았으며,
+> 페이로드 렌더링은 `RelayWorker.buildPayload()`에서 처리한다.
 
-- [ ] **Step 1: 테스트 작성**
+**현재 구현:**
+- `Output.Template`: `map[string]string` — 각 value가 CEL/Expr 표현식
+- `RelayWorker.buildPayload(engine, template, data)`: 각 표현식 평가 후 JSON 마샬링
+- 템플릿이 비어 있으면 `data["payload"]` 원문을 그대로 전달
 
-`internal/domain/template_test.go`:
-
-```go
-package domain_test
-
-import (
-	"testing"
-	"time"
-
-	"webhook-relay/internal/domain"
-)
-
-func TestRenderTemplate(t *testing.T) {
-	alert := domain.Alert{
-		ID:        "abc123",
-		Source:    domain.SourceTypeBeszel,
-		Payload:   domain.RawPayload(`{"host":"server1"}`),
-		CreatedAt: time.Date(2026, 3, 20, 12, 0, 0, 0, time.UTC),
-		Status:    domain.AlertStatusPending,
-	}
-
-	tests := []struct {
-		name    string
-		tmpl    string
-		want    string
-		wantErr bool
-	}{
-		{
-			name: "source and id",
-			tmpl: `{"text":"{{ .Source }}: {{ .ID }}"}`,
-			want: `{"text":"BESZEL: abc123"}`,
-		},
-		{
-			name:    "invalid syntax",
-			tmpl:    `{{ .Source`,
-			wantErr: true,
-		},
-		{
-			name: "payload field",
-			tmpl: `{{ .Payload }}`,
-			want: `{"host":"server1"}`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := domain.RenderTemplate(tt.tmpl, alert)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !tt.wantErr && string(got) != tt.want {
-				t.Errorf("got %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestValidateTemplate(t *testing.T) {
-	if err := domain.ValidateTemplate(`{{ .Source }}`); err != nil {
-		t.Errorf("valid template failed: %v", err)
-	}
-	if err := domain.ValidateTemplate(`{{ .Source`); err == nil {
-		t.Error("invalid template should return error")
-	}
-}
-```
-
-- [ ] **Step 2: 테스트 실패 확인**
-
-```bash
-go test ./internal/domain/... -run TestRenderTemplate
-```
-
-Expected: FAIL
-
-- [ ] **Step 3: 구현**
-
-`internal/domain/template.go`:
-
-```go
-package domain
-
-import (
-	"bytes"
-	"fmt"
-	"text/template"
-	"time"
-)
-
-type TemplateData struct {
-	ID        string
-	Source    string
-	Payload   string
-	CreatedAt time.Time
-}
-
-func RenderTemplate(tmpl string, alert Alert) ([]byte, error) {
-	t, err := template.New("").Parse(tmpl)
-	if err != nil {
-		return nil, fmt.Errorf("parse template: %w", err)
-	}
-	data := TemplateData{
-		ID:        alert.ID,
-		Source:    string(alert.Source),
-		Payload:   string(alert.Payload),
-		CreatedAt: alert.CreatedAt,
-	}
-	var buf bytes.Buffer
-	if err := t.Execute(&buf, data); err != nil {
-		return nil, fmt.Errorf("execute template: %w", err)
-	}
-	return buf.Bytes(), nil
-}
-
-func ValidateTemplate(tmpl string) error {
-	if _, err := template.New("").Parse(tmpl); err != nil {
-		return fmt.Errorf("invalid template: %w", err)
-	}
-	return nil
-}
-```
-
-- [ ] **Step 4: 전체 도메인 테스트 통과 확인**
-
-```bash
-go test ./internal/domain/... -v
-```
-
-Expected: PASS
-
-- [ ] **Step 5: 커밋**
-
-```bash
-git add internal/domain/template.go internal/domain/template_test.go
-git commit -m "feat(domain): add template rendering helper"
+```yaml
+# 설정 예시
+template:
+  text: 'data.input + ": " + data.payload'
 ```
 
 ---

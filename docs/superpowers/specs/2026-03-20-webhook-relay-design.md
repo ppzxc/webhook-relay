@@ -36,7 +36,6 @@ internal/
 │   ├── channel_type.go
 │   ├── route.go
 │   ├── source_type.go
-│   ├── template.go                    # 템플릿 렌더링 도메인 헬퍼
 │   └── errors.go
 │
 ├── application/                       # 헥사곤 핵심
@@ -141,7 +140,7 @@ type Channel struct {
     ID           string
     Type         ChannelType
     URL          string
-    Template     string   // Go text/template 원문 문자열 (YAML에서 로드)
+    Template     map[string]string   // key -> CEL/Expr 표현식 (YAML에서 로드)
     Secret       string
     RetryCount   int      // 기본값: 3
     RetryDelayMs int      // 기본값: 1000
@@ -157,23 +156,18 @@ type Route struct {
 }
 ```
 
-### 템플릿 렌더링 (도메인 헬퍼)
+### 템플릿 렌더링 (RelayWorker)
 
-`domain/template.go`에 `RenderTemplate(tmpl string, alert Alert) ([]byte, error)` 구현.
-- `text/template`은 표준 라이브러리이므로 도메인에서 직접 사용 허용
-- 템플릿 데이터 모델 (`.` 값):
+`Output.Template`은 `map[string]string`으로 각 value는 CEL/Expr 표현식이다.
+`RelayWorker.buildPayload(engine, template, data)`에서 각 표현식을 평가해 JSON 페이로드를 생성한다.
+- 템플릿이 비어 있으면 `data["payload"]` 원문을 그대로 전달
+- `data` 컨텍스트: `data.id`, `data.input`, `data.payload`, `data.createdAt`, mapping으로 추가된 필드
 
-```go
-type TemplateData struct {
-    Source  string // alert.Source의 string 값
-    Payload string // alert.Payload의 JSON 문자열
-    ID      string
-    CreatedAt time.Time
-}
+예시:
+```yaml
+template:
+  text: 'data.input + ": " + data.payload'
 ```
-
-- 설정 로드 시 (`config.go`) 템플릿 문자열 파싱 검증 — 유효하지 않으면 로드 실패
-- 핫리로드 시에도 동일하게 파싱 검증 후 유효한 경우에만 반영
 
 ---
 

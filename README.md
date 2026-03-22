@@ -1,49 +1,49 @@
 # relaybox
 
-Generic relay hub: receives any inbound protocol/format and delivers to outbound channels via CEL/Expr expression filter, transform, and route rules.
+범용 릴레이 허브: 어떤 인바운드 프로토콜/포맷도 수신하고, CEL/Expr 표현식 기반 필터·변환·라우팅 규칙을 통해 아웃바운드 채널로 전달한다.
 
 ```
-any inbound (HTTP REST / WebSocket / TCP / ...)
+어떤 인바운드 (HTTP REST / WebSocket / TCP / ...)
         ↓
-  parser pipeline (JSON / Form / XML / Logfmt / Regex)
+  파서 파이프라인 (JSON / Form / XML / Logfmt / Regex)
         ↓
-  CEL / Expr expression filter + transform + route
+  CEL / Expr 표현식 필터 + 변환 + 라우팅
         ↓
-any outbound (Webhook / Slack / Discord / ...)
+어떤 아웃바운드 (Webhook / Slack / Discord / ...)
 ```
 
-## Features
+## 주요 기능
 
-- **Multi-protocol inbound** — HTTP REST + WebSocket + TCP
-- **Parser pipeline** — JSON, Form, XML, Logfmt, Regex per input
-- **Expression-based routing** — CEL/Expr filter, mapping, and routing conditions per rule
-- **at-least-once delivery** — file-queue backed, survives restarts
-- **Exponential backoff retry** — per-channel `retryCount` / `retryDelayMs`
-- **Hot config reload** — change outputs / rules without restart
-- **Bearer token auth** — per-input independent secrets
+- **멀티 프로토콜 인바운드** — HTTP REST + WebSocket + TCP
+- **파서 파이프라인** — 입력별로 JSON, Form, XML, Logfmt, Regex 지원
+- **표현식 기반 라우팅** — 규칙별 CEL/Expr 필터, 매핑, 라우팅 조건
+- **at-least-once 전달** — 파일 큐 기반, 재시작 시에도 메시지 보존
+- **지수 백오프 재시도** — 채널별 `retryCount` / `retryDelayMs` 설정
+- **설정 핫리로드** — 재시작 없이 아웃풋 / 규칙 변경 가능
+- **Bearer 토큰 인증** — 입력별 독립 시크릿
 
-## Quick Start
+## 빠른 시작
 
-### Prerequisites
+### 사전 요구 사항
 
 - Go 1.25+
-- GCC (required for go-sqlite3 CGO build)
+- GCC (go-sqlite3 CGO 빌드에 필요)
 
 ```bash
-# Build
+# 빌드
 CGO_ENABLED=1 go build -o relaybox ./cmd/server/
 
-# Prepare config
-cp internal/config/config.example.yaml config.yaml
-# Edit config.yaml, then:
+# 설정 준비
+cp docs/config.example.yaml config.yaml
+# config.yaml 수정 후:
 
-# Start server
+# 서버 시작
 ./relaybox start --config config.yaml
 ```
 
-## Configuration
+## 설정
 
-`config.yaml` example:
+`config.yaml` 예시:
 
 ```yaml
 server:
@@ -68,7 +68,7 @@ inputs:
     address: ":9001"
     delimiter: "\n"
     parser: json
-    secret: ""        # secret unused for TCP inputs
+    secret: ""        # TCP 입력은 시크릿 미사용
 
 outputs:
   - id: ops-webhook
@@ -81,7 +81,7 @@ outputs:
 
 rules:
   - inputId: beszel
-    engine: cel           # override default engine per rule
+    engine: cel           # 규칙별 엔진 오버라이드
     filter: 'data.input == "BESZEL"'
     mapping:
       severity: '"HIGH"'
@@ -89,7 +89,7 @@ rules:
       - condition: 'data.severity == "HIGH"'
         outputIds: [ops-webhook]
   - inputId: tcp-input
-    outputIds: [ops-webhook]  # simple: no filter/routing, send to all
+    outputIds: [ops-webhook]  # 단순: 필터/라우팅 없이 전체 전송
 
 storage:
   type: SQLITE
@@ -101,38 +101,38 @@ queue:
   workerCount: 2
 ```
 
-### Expression Variables
+### 표현식 변수
 
-All expressions (filter, mapping, routing, template) share the same `data` context:
+모든 표현식(필터, 매핑, 라우팅, 템플릿)은 동일한 `data` 컨텍스트를 공유한다:
 
-| Variable | Description |
-|----------|-------------|
-| `data.id` | Message ULID |
-| `data.input` | Input type (`BESZEL`, `DOZZLE`, `GENERIC`, etc.) |
-| `data.payload` | Raw payload string |
-| `data.createdAt` | Receive timestamp (RFC3339) |
-| `data.<field>` | Any field added via `mapping` expressions |
+| 변수 | 설명 |
+|------|------|
+| `data.id` | 메시지 ULID |
+| `data.input` | 입력 타입 (`BESZEL`, `DOZZLE`, `GENERIC` 등) |
+| `data.payload` | 원본 페이로드 문자열 |
+| `data.createdAt` | 수신 타임스탬프 (RFC3339) |
+| `data.<field>` | `mapping` 표현식으로 추가된 필드 |
 
-**Filter** — boolean expression; message is dropped if `false`:
+**필터** — 불리언 표현식; `false`이면 메시지 드롭:
 ```yaml
 filter: 'data.input == "BESZEL"'
 ```
 
-**Mapping** — enrich `data` with computed fields:
+**매핑** — 계산된 필드로 `data` 보강:
 ```yaml
 mapping:
   severity: '"HIGH"'
   label: 'data.input + "-alert"'
 ```
 
-**Routing** — conditional output selection (evaluated after mapping):
+**라우팅** — 조건부 아웃풋 선택 (매핑 이후 평가):
 ```yaml
 routing:
   - condition: 'data.severity == "HIGH"'
     outputIds: [ops-webhook]
 ```
 
-**Template** — map of output fields rendered as expressions:
+**템플릿** — 아웃풋 필드를 표현식으로 렌더링:
 ```yaml
 template:
   text: 'data.input + ": " + data.payload'
@@ -140,7 +140,7 @@ template:
 
 ## API
 
-### Receive Message
+### 메시지 수신
 
 ```
 POST /inputs/{inputId}/messages
@@ -150,58 +150,58 @@ Content-Type: application/json
 {"host": "server1", "status": "down"}
 ```
 
-Response `201 Created`:
+응답 `201 Created`:
 ```json
 {"id": "01J...", "status": "PENDING"}
 ```
 
-### WebSocket Inbound
+### WebSocket 인바운드
 
 ```
 GET /inputs/{inputId}/messages/ws
 Authorization: Bearer <secret>
 ```
 
-JSON messages sent after connect are processed identically to HTTP POST.
+연결 후 JSON 메시지를 전송하면 HTTP POST와 동일하게 처리된다.
 
-### TCP Inbound
+### TCP 인바운드
 
-Connect to the configured `address` and send newline-delimited (or custom `delimiter`) messages. No token auth — secure via network policy.
+설정한 `address`로 연결 후 개행(또는 커스텀 `delimiter`) 구분 메시지를 전송한다. 토큰 인증 없음 — 네트워크 정책으로 보안 적용.
 
-### Health Check
+### 헬스 체크
 
 ```
 GET /healthz
 → 200 OK
 ```
 
-All HTTP responses include an `X-API-Version` header.
+모든 HTTP 응답에는 `X-API-Version` 헤더가 포함된다.
 
-## Architecture
+## 아키텍처
 
-Hexagonal architecture (Ports & Adapters). Dependencies always flow inward toward domain.
+헥사고날 아키텍처(Ports & Adapters). 의존성 방향은 항상 도메인을 향해 안쪽으로만 흐른다.
 
 ```
 domain (0 deps)
   ↑
-application/port/{input,output}  ← interface definitions
+application/port/{input,output}  ← 인터페이스 정의
   ↑
-application/service              ← business logic
+application/service              ← 비즈니스 로직
   ↑
-adapter/{input,output}           ← external world connections
+adapter/{input,output}           ← 외부 세계와 연결
   ↑
-cmd/server/main.go               ← DI wiring, cobra CLI
+cmd/server/main.go               ← DI 조립, cobra CLI
 ```
 
-## Development
+## 개발
 
 ```bash
-# Full test suite (race detector)
+# 전체 테스트 (race detector 포함)
 go test -race ./... -timeout 60s
 
-# Static analysis
+# 정적 분석
 go vet ./...
 
-# Regenerate sqlc (after SQL changes)
+# sqlc 코드 재생성 (SQL 변경 후)
 cd internal/adapter/output/sqlite && sqlc generate
 ```
