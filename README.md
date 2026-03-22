@@ -27,11 +27,10 @@
 ### 사전 요구 사항
 
 - Go 1.25+
-- GCC (go-sqlite3 CGO 빌드에 필요)
 
 ```bash
 # 빌드
-CGO_ENABLED=1 go build -o relaybox ./cmd/server/
+go build -o relaybox ./cmd/server/
 
 # 설정 준비
 cp docs/config.example.yaml config.yaml

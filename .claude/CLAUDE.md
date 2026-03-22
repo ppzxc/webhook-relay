@@ -5,8 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Test Commands
 
 ```bash
-# 빌드 (CGO 필수 — go-sqlite3)
-CGO_ENABLED=1 go build -o relaybox ./cmd/server/
+# 빌드
+go build -o relaybox ./cmd/server/
 
 # 전체 테스트 (race detector 포함)
 go test -race ./... -timeout 60s
@@ -24,8 +24,6 @@ go vet ./...
 # sqlc 코드 재생성 (query.sql / schema.sql 변경 시)
 cd internal/adapter/output/sqlite && sqlc generate
 ```
-
-> `CGO_ENABLED=1` 없이 빌드하면 `go-sqlite3`가 빌드 실패한다. `.claude/settings.local.json`의 `env`에 이미 설정되어 있다.
 
 ## Architecture
 
