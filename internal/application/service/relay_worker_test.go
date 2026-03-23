@@ -32,12 +32,12 @@ func (m *mockMessageQueue) Dequeue(_ context.Context) (domain.Message, output.Ac
 }
 
 type mockRuleReader struct {
-	rule    domain.Rule
-	outputs []domain.Output
+	engine  string
+	entries []domain.RuleEntry
 }
 
-func (m *mockRuleReader) GetRule(_ context.Context, _ string) (domain.Rule, []domain.Output, error) {
-	return m.rule, m.outputs, nil
+func (m *mockRuleReader) GetRules(_ context.Context, _ string) (string, []domain.RuleEntry, error) {
+	return m.engine, m.entries, nil
 }
 
 type mockSender struct {
@@ -102,15 +102,18 @@ func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
 	msg := domain.Message{ID: "w-err", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{
-		saveFn:   func(_ context.Context, _ domain.Message) error { return nil },
+		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
 		updateFn: func(_ context.Context, _ string, _ domain.MessageStatus, _ int, _ time.Time) error {
 			return errors.New("db error")
 		},
 	}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -136,8 +139,11 @@ func TestRelayWorker_DeliverSuccess(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -159,8 +165,8 @@ func TestRelayWorker_DeliverSuccess(t *testing.T) {
 
 type mockRuleReaderWithError struct{ err error }
 
-func (m *mockRuleReaderWithError) GetRule(_ context.Context, _ string) (domain.Rule, []domain.Output, error) {
-	return domain.Rule{}, nil, m.err
+func (m *mockRuleReaderWithError) GetRules(_ context.Context, _ string) (string, []domain.RuleEntry, error) {
+	return "", nil, m.err
 }
 
 func TestRelayWorker_NoRule_Nacks(t *testing.T) {
@@ -225,8 +231,11 @@ func TestRelayWorker_SendError_MarksAsFailed(t *testing.T) {
 		},
 	}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, RetryCount: 1, RetryDelayMs: 10}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL", RetryCount: 1, RetryDelayMs: 10}},
+		}},
 	}
 	registry := &mockRegistryFn{senderFn: func() output.OutputSender { return &mockSenderError{} }}
 
@@ -285,8 +294,11 @@ func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: `data.input == "BESZEL"`},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{Filter: `data.input == "BESZEL"`},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -317,8 +329,11 @@ func TestRelayWorker_FilterFalse_Skips(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: `data.input == "NONEXISTENT"`},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{Filter: `data.input == "NONEXISTENT"`},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -363,8 +378,11 @@ func TestRelayWorker_EmptyFilter_PassesAll(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: ""},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{Filter: ""},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -390,11 +408,14 @@ func TestRelayWorker_EmptyRouting_AllOutputs(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule: domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{
-			{ID: "c1", Type: domain.OutputTypeWebhook},
-			{ID: "c2", Type: domain.OutputTypeWebhook},
-		},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule: domain.Rule{},
+			Outputs: []domain.Output{
+				{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"},
+				{ID: "c2", Type: domain.OutputTypeWebhook, Engine: "CEL"},
+			},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -420,17 +441,19 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule: domain.Rule{
-			InputID: "beszel",
-			Routing: []domain.RouteCondition{
-				{Condition: `data.input == "BESZEL"`, OutputIDs: []string{"c1"}},
-				{Condition: `data.input == "DOZZLE"`, OutputIDs: []string{"c2"}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule: domain.Rule{
+				Routing: []domain.RouteCondition{
+					{Condition: `data.input == "BESZEL"`, OutputIDs: []string{"c1"}},
+					{Condition: `data.input == "DOZZLE"`, OutputIDs: []string{"c2"}},
+				},
 			},
-		},
-		outputs: []domain.Output{
-			{ID: "c1", Type: domain.OutputTypeWebhook},
-			{ID: "c2", Type: domain.OutputTypeWebhook},
-		},
+			Outputs: []domain.Output{
+				{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"},
+				{ID: "c2", Type: domain.OutputTypeWebhook, Engine: "CEL"},
+			},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -460,13 +483,16 @@ func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule: domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{
-			ID: "c1", Type: domain.OutputTypeWebhook,
-			Template: map[string]string{
-				"src": `data.input`,
-				"msg": `"alert from " + data.input`,
-			},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule: domain.Rule{},
+			Outputs: []domain.Output{{
+				ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL",
+				Template: map[string]string{
+					"src": `data.input`,
+					"msg": `"alert from " + data.input`,
+				},
+			}},
 		}},
 	}
 	registry := &mockRegistry{sender: sender}
@@ -512,8 +538,11 @@ func TestRelayWorker_NoTemplate_UsesRawPayload(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -551,17 +580,19 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule: domain.Rule{
-			InputID: "beszel",
-			Mapping: map[string]string{
-				"upperInput": `"[" + data.input + "]"`,
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule: domain.Rule{
+				Mapping: map[string]string{
+					"upperInput": `"[" + data.input + "]"`,
+				},
 			},
-		},
-		outputs: []domain.Output{{
-			ID: "c1", Type: domain.OutputTypeWebhook,
-			Template: map[string]string{
-				"tag": `data.upperInput`,
-			},
+			Outputs: []domain.Output{{
+				ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL",
+				Template: map[string]string{
+					"tag": `data.upperInput`,
+				},
+			}},
 		}},
 	}
 	registry := &mockRegistry{sender: sender}
@@ -616,8 +647,11 @@ func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockCountingSenderError{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, RetryCount: 0, RetryDelayMs: 0}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL", RetryCount: 0, RetryDelayMs: 0}},
+		}},
 	}
 	registry := &mockRegistryCountingError{sender: sender}
 
@@ -641,8 +675,11 @@ func TestRelayWorker_ZeroConfig_UsesDefaults(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -665,8 +702,11 @@ func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockCountingSenderError{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, RetryCount: 1, RetryDelayMs: 10}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL", RetryCount: 1, RetryDelayMs: 10}},
+		}},
 	}
 	registry := &mockRegistryCountingError{sender: sender}
 
@@ -709,8 +749,11 @@ func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
 		},
 	}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: &mockSender{}}
 
@@ -734,9 +777,6 @@ func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
 }
 
 func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
-	// ParsedData contains "input": "HACKED" — if this overwrites the builtin
-	// "input" key, the filter `data.input == "BESZEL"` will fail and the sender
-	// will never be called. The fix must protect builtin keys from ParsedData.
 	msg := domain.Message{
 		ID:      "key-collision",
 		Input:   domain.InputTypeBeszel,
@@ -751,8 +791,11 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule:    domain.Rule{InputID: "beszel", Filter: `data.input == "BESZEL"`},
-		outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook}},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{Filter: `data.input == "BESZEL"`},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
 	}
 	registry := &mockRegistry{sender: sender}
 
@@ -773,8 +816,6 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 }
 
 func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
-	// template with dot-notation keys must produce nested JSON.
-	// e.g. "content.type" + "content.text" → {"content": {"type": "text", "text": "..."}}
 	msg := domain.Message{
 		ID:      "nested-tmpl",
 		Input:   domain.InputTypeBeszel,
@@ -786,14 +827,18 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
-		rule: domain.Rule{InputID: "beszel"},
-		outputs: []domain.Output{{
-			ID:   "naver-works",
-			Type: domain.OutputTypeWebhook,
-			Template: map[string]string{
-				"content.type": `"text"`,
-				"content.text": `data.input + " alert: " + data.payload`,
-			},
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule: domain.Rule{},
+			Outputs: []domain.Output{{
+				ID:     "naver-works",
+				Type:   domain.OutputTypeWebhook,
+				Engine: "CEL",
+				Template: map[string]string{
+					"content.type": `"text"`,
+					"content.text": `data.input + " alert: " + data.payload`,
+				},
+			}},
 		}},
 	}
 	registry := &mockRegistry{sender: sender}
@@ -817,7 +862,6 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	payload := sender.payloads[0]
 	sender.mu.Unlock()
 
-	// Verify nested structure: {"content": {"type": "text", "text": "BESZEL alert: ..."}}
 	var got map[string]any
 	if err := json.Unmarshal(payload, &got); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
@@ -833,5 +877,48 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	text, _ := content["text"].(string)
 	if len(text) == 0 || text[:len(wantPrefix)] != wantPrefix {
 		t.Errorf("content.text = %q, want prefix %q", text, wantPrefix)
+	}
+}
+
+func TestRelayWorker_MultipleRuleEntries_EachProcessedIndependently(t *testing.T) {
+	msg := domain.Message{ID: "multi-rule", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	queue := &mockMessageQueue{messages: []domain.Message{msg}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		engine: "CEL",
+		entries: []domain.RuleEntry{
+			{
+				Rule:    domain.Rule{},
+				Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+			},
+			{
+				Rule:    domain.Rule{Filter: `data.input == "NONEXISTENT"`},
+				Outputs: []domain.Output{{ID: "c2", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+			},
+			{
+				Rule:    domain.Rule{},
+				Outputs: []domain.Output{{ID: "c3", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+			},
+		},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
+
+	// entry 1 passes (no filter) → c1 delivered
+	// entry 2 filtered out (NONEXISTENT) → skipped
+	// entry 3 passes (no filter) → c3 delivered
+	if got := sender.count.Load(); got != 2 {
+		t.Errorf("expected 2 sends (entry1 + entry3, entry2 filtered), got %d", got)
 	}
 }

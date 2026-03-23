@@ -77,97 +77,106 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 		defer w.cfg.OnProcessed()
 	}
 
-	rule, outputs, err := w.ruleReader.GetRule(ctx, string(msg.Input))
+	inputEngine, entries, err := w.ruleReader.GetRules(ctx, string(msg.Input))
 	if err != nil {
 		_ = nack()
-		return fmt.Errorf("get rule: %w", err)
+		return fmt.Errorf("get rules: %w", err)
+	}
+
+	eng, err := w.exprRegistry.Get(inputEngine)
+	if err != nil {
+		_ = nack()
+		return fmt.Errorf("get input engine: %w", err)
 	}
 
 	// Build evaluation data from message
 	data := buildEvalData(msg)
 
-	// Get expression engine
-	engine, err := w.getEngine(rule.Engine)
-	if err != nil {
-		_ = nack()
-		return fmt.Errorf("get engine: %w", err)
-	}
+	success := true
+	for _, entry := range entries {
+		rule := entry.Rule
+		outputs := entry.Outputs
 
-	// 1. Filter: skip if filter expression evaluates to false
-	if rule.Filter != "" {
-		pass, err := engine.EvaluateBool(rule.Filter, data)
-		if err != nil {
-			slog.Warn("filter evaluation failed", "messageID", msg.ID, "err", err)
-			_ = nack()
-			return err
-		}
-		if !pass {
-			_ = ack() // message processed but filtered out
-			return nil
-		}
-	}
-
-	// 2. Mapping: evaluate all mapping expressions against the original data (parallel semantics).
-	// All expressions see the same pre-mapping state; cross-key dependencies are not supported.
-	mappedData := copyMap(data)
-	for key, expr := range rule.Mapping {
-		val, err := engine.Evaluate(expr, data)
-		if err != nil {
-			slog.Warn("mapping evaluation failed", "messageID", msg.ID, "key", key, "err", err)
-			continue
-		}
-		mappedData[key] = val
-	}
-
-	// 3. Routing: evaluate conditions to determine which outputs to use
-	var routedOutputs []domain.Output
-	if len(rule.Routing) == 0 {
-		// No routing conditions = send to all outputs
-		routedOutputs = outputs
-	} else {
-		outputsByID := make(map[string]domain.Output, len(outputs))
-		for _, o := range outputs {
-			outputsByID[o.ID] = o
-		}
-		for _, rc := range rule.Routing {
-			match, err := engine.EvaluateBool(rc.Condition, mappedData)
+		// 1. Filter: skip this entry if filter expression evaluates to false
+		if rule.Filter != "" {
+			pass, err := eng.EvaluateBool(rule.Filter, data)
 			if err != nil {
-				slog.Warn("routing condition failed", "messageID", msg.ID, "condition", rc.Condition, "err", err)
+				slog.Warn("filter evaluation failed", "messageID", msg.ID, "err", err)
+				_ = nack()
+				return err
+			}
+			if !pass {
+				continue // filtered out; try next entry
+			}
+		}
+
+		// 2. Mapping: evaluate all mapping expressions against the original data (parallel semantics).
+		mappedData := copyMap(data)
+		for key, expr := range rule.Mapping {
+			val, err := eng.Evaluate(expr, data)
+			if err != nil {
+				slog.Warn("mapping evaluation failed", "messageID", msg.ID, "key", key, "err", err)
 				continue
 			}
-			if match {
-				for _, oid := range rc.OutputIDs {
-					if o, ok := outputsByID[oid]; ok {
-						routedOutputs = append(routedOutputs, o)
+			mappedData[key] = val
+		}
+
+		// 3. Routing: evaluate conditions to determine which outputs to use
+		var routedOutputs []domain.Output
+		if len(rule.Routing) == 0 {
+			routedOutputs = outputs
+		} else {
+			outputsByID := make(map[string]domain.Output, len(outputs))
+			for _, o := range outputs {
+				outputsByID[o.ID] = o
+			}
+			for _, rc := range rule.Routing {
+				match, err := eng.EvaluateBool(rc.Condition, mappedData)
+				if err != nil {
+					slog.Warn("routing condition failed", "messageID", msg.ID, "condition", rc.Condition, "err", err)
+					continue
+				}
+				if match {
+					for _, oid := range rc.OutputIDs {
+						if o, ok := outputsByID[oid]; ok {
+							routedOutputs = append(routedOutputs, o)
+						}
 					}
 				}
 			}
 		}
-	}
 
-	// Deduplicate outputs to prevent double-sending when multiple routing conditions match the same output
-	seen := make(map[string]struct{}, len(routedOutputs))
-	deduped := routedOutputs[:0]
-	for _, o := range routedOutputs {
-		if _, ok := seen[o.ID]; !ok {
-			seen[o.ID] = struct{}{}
-			deduped = append(deduped, o)
+		// Deduplicate outputs to prevent double-sending
+		seen := make(map[string]struct{}, len(routedOutputs))
+		deduped := make([]domain.Output, 0, len(routedOutputs))
+		for _, o := range routedOutputs {
+			if _, ok := seen[o.ID]; !ok {
+				seen[o.ID] = struct{}{}
+				deduped = append(deduped, o)
+			}
 		}
-	}
-	routedOutputs = deduped
 
-	// 4. Deliver to each routed output
-	success := true
-	for _, out := range routedOutputs {
-		payload, err := w.buildPayload(engine, out.Template, mappedData)
-		if err != nil {
-			slog.Warn("payload build failed", "messageID", msg.ID, "output", out.ID, "err", err)
-			success = false
-			continue
-		}
-		if err := w.deliver(ctx, out, payload); err != nil {
-			slog.Warn("delivery failed", "messageID", msg.ID, "output", out.ID, "err", err)
-			success = false
+		// 4. Deliver to each routed output
+		for _, out := range deduped {
+			var outEng output.ExpressionEngine
+			if len(out.Template) > 0 {
+				outEng, err = w.exprRegistry.Get(out.Engine)
+				if err != nil {
+					slog.Warn("get output engine failed", "messageID", msg.ID, "output", out.ID, "engine", out.Engine, "err", err)
+					success = false
+					continue
+				}
+			}
+			payload, err := w.buildPayload(outEng, out.Template, mappedData)
+			if err != nil {
+				slog.Warn("payload build failed", "messageID", msg.ID, "output", out.ID, "err", err)
+				success = false
+				continue
+			}
+			if err := w.deliver(ctx, out, payload); err != nil {
+				slog.Warn("delivery failed", "messageID", msg.ID, "output", out.ID, "err", err)
+				success = false
+			}
 		}
 	}
 
@@ -281,17 +290,6 @@ func setNested(m map[string]any, key string, val any) {
 		m = child
 	}
 	m[parts[len(parts)-1]] = val
-}
-
-func (w *RelayWorker) getEngine(engineType string) (output.ExpressionEngine, error) {
-	if engineType == "" {
-		eng := w.exprRegistry.Default()
-		if eng == nil {
-			return nil, fmt.Errorf("no default expression engine registered")
-		}
-		return eng, nil
-	}
-	return w.exprRegistry.Get(engineType)
 }
 
 func copyMap(m map[string]any) map[string]any {

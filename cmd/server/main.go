@@ -87,11 +87,6 @@ func runServer(cfgPath string) error {
 	exprEngine := expression.NewExprEngine()
 	exprRegistry.Register(celEngine)
 	exprRegistry.Register(exprEngine)
-	if cfg.Expression.DefaultEngine != "" {
-		if err := exprRegistry.SetDefault(cfg.Expression.DefaultEngine); err != nil {
-			return fmt.Errorf("set default expression engine: %w", err)
-		}
-	}
 
 	// Config-based routing (hot-reload support)
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
