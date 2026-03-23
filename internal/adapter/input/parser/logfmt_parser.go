@@ -11,7 +11,7 @@ type LogfmtParser struct{}
 
 func NewLogfmtParser() *LogfmtParser { return &LogfmtParser{} }
 
-func (p *LogfmtParser) Type() string { return "logfmt" }
+func (p *LogfmtParser) Type() string { return "LOGFMT" }
 
 func (p *LogfmtParser) Parse(_ string, body []byte) (map[string]any, error) {
 	if len(body) == 0 {

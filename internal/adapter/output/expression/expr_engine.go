@@ -19,7 +19,7 @@ func NewExprEngine() *ExprEngine {
 	return &ExprEngine{}
 }
 
-func (e *ExprEngine) Type() string { return "expr" }
+func (e *ExprEngine) Type() string { return "EXPR" }
 
 func (e *ExprEngine) Evaluate(expression string, data map[string]any) (any, error) {
 	prg, err := e.getOrCompile(expression)

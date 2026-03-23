@@ -8,9 +8,14 @@ type RouteCondition struct {
 
 // Rule describes how to process messages from a given input.
 type Rule struct {
-	InputID string
-	Engine  string            // "cel" or "expr"; empty means use default
 	Filter  string            // expression; empty means pass all
 	Mapping map[string]string // key -> expression
 	Routing []RouteCondition
+	OutputIDs []string // simple mode: send to all listed outputs (no routing)
+}
+
+// RuleEntry pairs a rule with the outputs it routes to.
+type RuleEntry struct {
+	Rule    Rule
+	Outputs []Output
 }

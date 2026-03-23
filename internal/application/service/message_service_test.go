@@ -107,15 +107,15 @@ func TestMessageService_Receive_WithParser(t *testing.T) {
 
 	registry := &mockParserRegistry{
 		parsers: map[string]input.Parser{
-			"json": &mockParser{
+			"JSON": &mockParser{
 				result: map[string]any{"host": "srv1", "port": float64(8080)},
-				typ:    "json",
+				typ:    "JSON",
 			},
 		},
 	}
 
 	parserTypes := map[domain.InputType]string{
-		domain.InputTypeBeszel: "json",
+		domain.InputTypeBeszel: "JSON",
 	}
 
 	svc := service.NewMessageService(repo, queue, parserTypes, registry)
@@ -155,15 +155,15 @@ func TestMessageService_Receive_ParserFailsGracefully(t *testing.T) {
 
 	registry := &mockParserRegistry{
 		parsers: map[string]input.Parser{
-			"json": &mockParser{
+			"JSON": &mockParser{
 				err: errors.New("parse error"),
-				typ: "json",
+				typ: "JSON",
 			},
 		},
 	}
 
 	parserTypes := map[domain.InputType]string{
-		domain.InputTypeBeszel: "json",
+		domain.InputTypeBeszel: "JSON",
 	}
 
 	svc := service.NewMessageService(repo, queue, parserTypes, registry)

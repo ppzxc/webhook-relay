@@ -8,8 +8,8 @@ import (
 
 func TestFormParser_Type(t *testing.T) {
 	p := parser.NewFormParser()
-	if got := p.Type(); got != "form" {
-		t.Errorf("Type() = %q, want %q", got, "form")
+	if got := p.Type(); got != "FORM" {
+		t.Errorf("Type() = %q, want %q", got, "FORM")
 	}
 }
 

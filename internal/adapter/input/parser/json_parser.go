@@ -10,7 +10,7 @@ type JSONParser struct{}
 
 func NewJSONParser() *JSONParser { return &JSONParser{} }
 
-func (p *JSONParser) Type() string { return "json" }
+func (p *JSONParser) Type() string { return "JSON" }
 
 func (p *JSONParser) Parse(_ string, body []byte) (map[string]any, error) {
 	if len(body) == 0 {

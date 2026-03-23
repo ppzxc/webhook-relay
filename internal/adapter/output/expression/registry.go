@@ -8,8 +8,7 @@ import (
 
 // InMemoryExpressionEngineRegistry stores expression engines by type.
 type InMemoryExpressionEngineRegistry struct {
-	engines  map[string]output.ExpressionEngine
-	defEngine output.ExpressionEngine
+	engines map[string]output.ExpressionEngine
 }
 
 // NewInMemoryExpressionEngineRegistry creates an empty registry.
@@ -19,22 +18,9 @@ func NewInMemoryExpressionEngineRegistry() *InMemoryExpressionEngineRegistry {
 	}
 }
 
-// Register adds an engine. The first registered engine becomes the default.
+// Register adds an engine.
 func (r *InMemoryExpressionEngineRegistry) Register(engine output.ExpressionEngine) {
 	r.engines[engine.Type()] = engine
-	if r.defEngine == nil {
-		r.defEngine = engine
-	}
-}
-
-// SetDefault explicitly sets the default engine.
-func (r *InMemoryExpressionEngineRegistry) SetDefault(engineType string) error {
-	e, ok := r.engines[engineType]
-	if !ok {
-		return fmt.Errorf("expression engine %q not registered", engineType)
-	}
-	r.defEngine = e
-	return nil
 }
 
 // Get returns the engine with the given type.
@@ -44,9 +30,4 @@ func (r *InMemoryExpressionEngineRegistry) Get(engineType string) (output.Expres
 		return nil, fmt.Errorf("expression engine %q not registered", engineType)
 	}
 	return e, nil
-}
-
-// Default returns the default engine.
-func (r *InMemoryExpressionEngineRegistry) Default() output.ExpressionEngine {
-	return r.defEngine
 }

@@ -10,7 +10,7 @@ type FormParser struct{}
 
 func NewFormParser() *FormParser { return &FormParser{} }
 
-func (p *FormParser) Type() string { return "form" }
+func (p *FormParser) Type() string { return "FORM" }
 
 func (p *FormParser) Parse(_ string, body []byte) (map[string]any, error) {
 	if len(body) == 0 {

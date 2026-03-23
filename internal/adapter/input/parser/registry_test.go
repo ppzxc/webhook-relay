@@ -11,12 +11,12 @@ func TestRegistry_GetExisting(t *testing.T) {
 	reg := parser.NewInMemoryParserRegistry()
 	reg.Register(parser.NewJSONParser())
 
-	p, err := reg.Get("json")
+	p, err := reg.Get("JSON")
 	if err != nil {
 		t.Fatalf("Get() error: %v", err)
 	}
-	if p.Type() != "json" {
-		t.Errorf("Type() = %q, want %q", p.Type(), "json")
+	if p.Type() != "JSON" {
+		t.Errorf("Type() = %q, want %q", p.Type(), "JSON")
 	}
 }
 
@@ -37,11 +37,11 @@ func TestRegistry_RegisterOverwrite(t *testing.T) {
 	reg.Register(parser.NewJSONParser())
 	reg.Register(parser.NewJSONParser()) // should not panic
 
-	p, err := reg.Get("json")
+	p, err := reg.Get("JSON")
 	if err != nil {
 		t.Fatalf("Get() error: %v", err)
 	}
-	if p.Type() != "json" {
-		t.Errorf("Type() = %q, want %q", p.Type(), "json")
+	if p.Type() != "JSON" {
+		t.Errorf("Type() = %q, want %q", p.Type(), "JSON")
 	}
 }

@@ -87,11 +87,6 @@ func runServer(cfgPath string) error {
 	exprEngine := expression.NewExprEngine()
 	exprRegistry.Register(celEngine)
 	exprRegistry.Register(exprEngine)
-	if cfg.Expression.DefaultEngine != "" {
-		if err := exprRegistry.SetDefault(cfg.Expression.DefaultEngine); err != nil {
-			return fmt.Errorf("set default expression engine: %w", err)
-		}
-	}
 
 	// Config-based routing (hot-reload support)
 	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
@@ -119,12 +114,12 @@ func runServer(cfgPath string) error {
 			continue
 		}
 		parserKey := inp.Parser
-		if inp.Parser == "regex" {
+		if inp.Parser == "REGEX" {
 			regexParser, err := parser.NewRegexParser(inp.Pattern)
 			if err != nil {
 				return fmt.Errorf("input %q: %w", inp.ID, err)
 			}
-			parserKey = "regex:" + inp.ID
+			parserKey = "REGEX:" + inp.ID
 			parserRegistry.RegisterWithKey(parserKey, regexParser)
 		}
 		parserTypes[domain.InputType(inp.Type)] = parserKey
@@ -226,15 +221,15 @@ func (r *configInputResolver) ValidateToken(inputID, token string) bool {
 
 func parserToContentType(parserType string) string {
 	switch parserType {
-	case "json":
+	case "JSON":
 		return "application/json"
-	case "xml":
+	case "XML":
 		return "application/xml"
-	case "form":
+	case "FORM":
 		return "application/x-www-form-urlencoded"
-	case "logfmt":
+	case "LOGFMT":
 		return "text/plain"
-	case "regex", "":
+	case "REGEX", "":
 		return "application/octet-stream"
 	default:
 		slog.Warn("unknown parser type for content-type mapping", "parser", parserType)
@@ -262,11 +257,11 @@ func buildRelayWorkerConfig(wc cfgpkg.WorkerConfig) service.RelayWorkerConfig {
 
 func setupLogger(cfg *cfgpkg.Config) {
 	level := map[string]slog.Level{
-		"debug": slog.LevelDebug, "warn": slog.LevelWarn, "error": slog.LevelError,
+		"DEBUG": slog.LevelDebug, "WARN": slog.LevelWarn, "ERROR": slog.LevelError,
 	}[cfg.Log.Level]
 	var h slog.Handler
 	opts := &slog.HandlerOptions{Level: level}
-	if cfg.Log.Format == "json" {
+	if cfg.Log.Format == "JSON" {
 		h = slog.NewJSONHandler(os.Stdout, opts)
 	} else {
 		h = slog.NewTextHandler(os.Stdout, opts)

@@ -11,8 +11,8 @@ func TestRegexParser_Type(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewRegexParser error: %v", err)
 	}
-	if got := p.Type(); got != "regex" {
-		t.Errorf("Type() = %q, want %q", got, "regex")
+	if got := p.Type(); got != "REGEX" {
+		t.Errorf("Type() = %q, want %q", got, "REGEX")
 	}
 }
 

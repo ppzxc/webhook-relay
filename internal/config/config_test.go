@@ -8,28 +8,30 @@ import (
 	"relaybox/internal/config"
 )
 
+// testYAML uses the new structure: rules inside inputs, engine required on inputs/outputs.
 const testYAML = `
 server:
   port: 9090
 log:
-  level: debug
-  format: text
+  level: DEBUG
+  format: TEXT
 inputs:
   - id: beszel
     type: BESZEL
     secret: test-secret
+    engine: CEL
+    rules:
+      - outputIds:
+          - ops-webhook
 outputs:
   - id: ops-webhook
     type: WEBHOOK
+    engine: CEL
     url: https://hooks.example.com/test
     template:
       text: 'data.input + ": " + data.payload'
     retryCount: 3
     retryDelayMs: 500
-rules:
-  - inputId: beszel
-    outputIds:
-      - ops-webhook
 storage:
   type: SQLITE
   path: ./data/test.db
@@ -60,8 +62,14 @@ func TestLoad(t *testing.T) {
 	if len(cfg.Inputs) != 1 || cfg.Inputs[0].ID != "beszel" {
 		t.Errorf("inputs = %+v", cfg.Inputs)
 	}
-	if len(cfg.Rules) != 1 {
-		t.Errorf("rules = %+v", cfg.Rules)
+	if cfg.Inputs[0].Engine != "CEL" {
+		t.Errorf("input engine = %q, want CEL", cfg.Inputs[0].Engine)
+	}
+	if len(cfg.Inputs[0].Rules) != 1 {
+		t.Errorf("input rules len = %d, want 1", len(cfg.Inputs[0].Rules))
+	}
+	if cfg.Outputs[0].Engine != "CEL" {
+		t.Errorf("output engine = %q, want CEL", cfg.Outputs[0].Engine)
 	}
 	if cfg.Outputs[0].Template["text"] != `data.input + ": " + data.payload` {
 		t.Errorf("template = %+v", cfg.Outputs[0].Template)
@@ -73,6 +81,7 @@ func TestLoad_EmptyInputID(t *testing.T) {
 inputs:
   - id: ""
     type: BESZEL
+    engine: CEL
     secret: s
 `
 	_, err := config.Load(writeConfig(t, yaml))
@@ -86,9 +95,11 @@ func TestLoad_DuplicateInputID(t *testing.T) {
 inputs:
   - id: beszel
     type: BESZEL
+    engine: CEL
     secret: s1
   - id: beszel
     type: BESZEL
+    engine: CEL
     secret: s2
 `
 	_, err := config.Load(writeConfig(t, yaml))
@@ -97,7 +108,7 @@ inputs:
 	}
 }
 
-func TestLoad_RuleReferencesUnknownOutput(t *testing.T) {
+func TestLoad_InputEngineRequired(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
@@ -106,11 +117,60 @@ inputs:
 outputs:
   - id: ch1
     type: WEBHOOK
+    engine: CEL
     url: https://example.com
-rules:
-  - inputId: beszel
-    outputIds:
-      - nonexistent-output
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for missing input engine")
+	}
+}
+
+func TestLoad_OutputEngineRequired(t *testing.T) {
+	yaml := `
+inputs:
+  - id: beszel
+    type: BESZEL
+    engine: CEL
+    secret: s
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    url: https://example.com
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for missing output engine")
+	}
+}
+
+func TestLoad_RuleReferencesUnknownOutput(t *testing.T) {
+	yaml := `
+inputs:
+  - id: beszel
+    type: BESZEL
+    engine: CEL
+    secret: s
+    rules:
+      - outputIds:
+          - nonexistent-output
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    engine: CEL
+    url: https://example.com
 `
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
@@ -118,19 +178,84 @@ rules:
 	}
 }
 
-func TestInMemoryRuleConfigReader(t *testing.T) {
-	cfg, _ := config.Load(writeConfig(t, testYAML))
-	reader := config.NewInMemoryRuleConfigReader(cfg)
-
-	rule, outputs, err := reader.GetRule(nil, "BESZEL")
+func TestLoad_MultipleRulesPerInput(t *testing.T) {
+	yaml := `
+inputs:
+  - id: beszel
+    type: BESZEL
+    engine: CEL
+    secret: s
+    rules:
+      - outputIds: [ch1]
+      - filter: 'data.severity == "HIGH"'
+        outputIds: [ch2]
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    engine: CEL
+    url: https://example.com/1
+  - id: ch2
+    type: WEBHOOK
+    engine: EXPR
+    url: https://example.com/2
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
 	if err != nil {
-		t.Fatalf("GetRule error: %v", err)
+		t.Fatalf("Load() error: %v", err)
 	}
-	if len(outputs) != 1 {
-		t.Errorf("got %d outputs, want 1", len(outputs))
+	if len(cfg.Inputs[0].Rules) != 2 {
+		t.Errorf("input rules len = %d, want 2", len(cfg.Inputs[0].Rules))
 	}
-	if rule.InputID != "beszel" {
-		t.Errorf("rule.InputID = %q, want beszel", rule.InputID)
+	if cfg.Inputs[0].Rules[1].Filter != `data.severity == "HIGH"` {
+		t.Errorf("rule[1].filter = %q", cfg.Inputs[0].Rules[1].Filter)
+	}
+}
+
+func TestLoad_WithFilterMappingRouting(t *testing.T) {
+	yaml := `
+inputs:
+  - id: beszel
+    type: BESZEL
+    engine: CEL
+    secret: s
+    rules:
+      - filter: 'data.status == "CRITICAL"'
+        mapping:
+          severity: '"HIGH"'
+        routing:
+          - condition: 'data.severity == "HIGH"'
+            outputIds: [ch1]
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    engine: CEL
+    url: https://example.com
+storage:
+  type: SQLITE
+  path: ./data/test.db
+queue:
+  type: FILE
+  path: ./data/queue
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	rule := cfg.Inputs[0].Rules[0]
+	if rule.Filter != `data.status == "CRITICAL"` {
+		t.Errorf("filter = %q", rule.Filter)
+	}
+	if rule.Mapping["severity"] != `"HIGH"` {
+		t.Errorf("mapping[severity] = %q", rule.Mapping["severity"])
+	}
+	if len(rule.Routing) != 1 {
+		t.Errorf("routing len = %d, want 1", len(rule.Routing))
 	}
 }
 
@@ -169,69 +294,5 @@ worker:
 	}
 	if cfg.Worker.PollBackoff != "1s" {
 		t.Errorf("worker.pollBackoff = %q, want \"1s\"", cfg.Worker.PollBackoff)
-	}
-}
-
-func TestLoad_WithExpressionConfig(t *testing.T) {
-	yaml := `
-expression:
-  defaultEngine: expr
-inputs:
-  - id: beszel
-    type: BESZEL
-    secret: s
-outputs:
-  - id: ch1
-    type: WEBHOOK
-    url: https://example.com
-rules:
-  - inputId: beszel
-    engine: expr
-    filter: 'data.status == "CRITICAL"'
-    mapping:
-      severity: '"HIGH"'
-    routing:
-      - condition: 'data.severity == "HIGH"'
-        outputIds: [ch1]
-storage:
-  type: SQLITE
-  path: ./data/test.db
-queue:
-  type: FILE
-  path: ./data/queue
-`
-	cfg, err := config.Load(writeConfig(t, yaml))
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Expression.DefaultEngine != "expr" {
-		t.Errorf("defaultEngine = %q, want expr", cfg.Expression.DefaultEngine)
-	}
-	if cfg.Rules[0].Engine != "expr" {
-		t.Errorf("rule engine = %q, want expr", cfg.Rules[0].Engine)
-	}
-	if cfg.Rules[0].Filter != `data.status == "CRITICAL"` {
-		t.Errorf("filter = %q", cfg.Rules[0].Filter)
-	}
-	if len(cfg.Rules[0].Routing) != 1 {
-		t.Errorf("routing len = %d, want 1", len(cfg.Rules[0].Routing))
-	}
-
-	reader := config.NewInMemoryRuleConfigReader(cfg)
-	rule, outputs, err := reader.GetRule(nil, "BESZEL")
-	if err != nil {
-		t.Fatalf("GetRule error: %v", err)
-	}
-	if rule.Engine != "expr" {
-		t.Errorf("rule.Engine = %q, want expr", rule.Engine)
-	}
-	if rule.Filter != `data.status == "CRITICAL"` {
-		t.Errorf("rule.Filter = %q", rule.Filter)
-	}
-	if len(rule.Routing) != 1 {
-		t.Errorf("rule.Routing len = %d", len(rule.Routing))
-	}
-	if len(outputs) != 1 {
-		t.Errorf("outputs len = %d, want 1", len(outputs))
 	}
 }

@@ -65,15 +65,17 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	defer targetSrv.Close()
 
 	cfg := &cfgpkg.Config{
-		Inputs: []cfgpkg.InputConfig{{ID: "beszel", Type: "BESZEL", Secret: "tok"}},
+		Inputs: []cfgpkg.InputConfig{{
+			ID: "beszel", Type: "BESZEL", Engine: "CEL", Secret: "tok",
+			Rules: []cfgpkg.RuleConfig{{OutputIDs: []string{"ch1"}}},
+		}},
 		Outputs: []cfgpkg.OutputConfig{{
-			ID: "ch1", Type: "WEBHOOK", URL: targetSrv.URL,
+			ID: "ch1", Type: "WEBHOOK", Engine: "CEL", URL: targetSrv.URL,
 			Template: map[string]string{
 				"src": `data.input`,
 			},
 			RetryCount: 1, RetryDelayMs: 10,
 		}},
-		Rules: []cfgpkg.RuleConfig{{InputID: "beszel", OutputIDs: []string{"ch1"}}},
 		Queue: cfgpkg.QueueConfig{WorkerCount: 1},
 	}
 

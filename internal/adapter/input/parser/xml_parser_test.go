@@ -8,8 +8,8 @@ import (
 
 func TestXMLParser_Type(t *testing.T) {
 	p := parser.NewXMLParser()
-	if got := p.Type(); got != "xml" {
-		t.Errorf("Type() = %q, want %q", got, "xml")
+	if got := p.Type(); got != "XML" {
+		t.Errorf("Type() = %q, want %q", got, "XML")
 	}
 }
 

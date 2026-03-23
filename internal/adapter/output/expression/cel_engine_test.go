@@ -20,8 +20,8 @@ var _ output.ExpressionEngine = (*expression.CELEngine)(nil)
 
 func TestCELEngine_Type(t *testing.T) {
 	e := newCELEngine(t)
-	if e.Type() != "cel" {
-		t.Errorf("Type() = %q, want cel", e.Type())
+	if e.Type() != "CEL" {
+		t.Errorf("Type() = %q, want CEL", e.Type())
 	}
 }
 

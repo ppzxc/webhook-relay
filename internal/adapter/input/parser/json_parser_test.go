@@ -8,8 +8,8 @@ import (
 
 func TestJSONParser_Type(t *testing.T) {
 	p := parser.NewJSONParser()
-	if got := p.Type(); got != "json" {
-		t.Errorf("Type() = %q, want %q", got, "json")
+	if got := p.Type(); got != "JSON" {
+		t.Errorf("Type() = %q, want %q", got, "JSON")
 	}
 }
 

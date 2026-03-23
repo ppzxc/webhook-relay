@@ -11,8 +11,8 @@ var _ output.ExpressionEngine = (*expression.ExprEngine)(nil)
 
 func TestExprEngine_Type(t *testing.T) {
 	e := expression.NewExprEngine()
-	if e.Type() != "expr" {
-		t.Errorf("Type() = %q, want expr", e.Type())
+	if e.Type() != "EXPR" {
+		t.Errorf("Type() = %q, want EXPR", e.Type())
 	}
 }
 

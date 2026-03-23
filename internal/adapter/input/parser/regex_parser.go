@@ -18,7 +18,7 @@ func NewRegexParser(pattern string) (*RegexParser, error) {
 	return &RegexParser{pattern: re}, nil
 }
 
-func (p *RegexParser) Type() string { return "regex" }
+func (p *RegexParser) Type() string { return "REGEX" }
 
 func (p *RegexParser) Parse(_ string, body []byte) (map[string]any, error) {
 	if len(body) == 0 {

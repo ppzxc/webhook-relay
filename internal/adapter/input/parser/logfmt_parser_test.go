@@ -8,8 +8,8 @@ import (
 
 func TestLogfmtParser_Type(t *testing.T) {
 	p := parser.NewLogfmtParser()
-	if got := p.Type(); got != "logfmt" {
-		t.Errorf("Type() = %q, want %q", got, "logfmt")
+	if got := p.Type(); got != "LOGFMT" {
+		t.Errorf("Type() = %q, want %q", got, "LOGFMT")
 	}
 }
 

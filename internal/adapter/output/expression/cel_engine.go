@@ -30,7 +30,7 @@ func NewCELEngine() (*CELEngine, error) {
 	return &CELEngine{env: env}, nil
 }
 
-func (e *CELEngine) Type() string { return "cel" }
+func (e *CELEngine) Type() string { return "CEL" }
 
 func (e *CELEngine) Evaluate(expression string, data map[string]any) (any, error) {
 	val, err := e.eval(expression, data)

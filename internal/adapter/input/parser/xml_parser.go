@@ -11,7 +11,7 @@ type XMLParser struct{}
 
 func NewXMLParser() *XMLParser { return &XMLParser{} }
 
-func (p *XMLParser) Type() string { return "xml" }
+func (p *XMLParser) Type() string { return "XML" }
 
 // Parse parses XML body into a flat map of element names to text content.
 // Limitations: XML attributes are not captured; for repeated element names, last value wins.
