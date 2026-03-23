@@ -37,5 +37,5 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            dist/relaybox-*
+            dist/relaybox-linux-amd64
             dist/checksums.txt
