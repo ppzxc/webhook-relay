@@ -11,5 +11,4 @@ type ExpressionEngine interface {
 // ExpressionEngineRegistry manages available expression engines.
 type ExpressionEngineRegistry interface {
 	Get(engineType string) (ExpressionEngine, error)
-	Default() ExpressionEngine
 }
