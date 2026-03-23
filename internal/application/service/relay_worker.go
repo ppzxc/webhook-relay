@@ -205,7 +205,7 @@ func (w *RelayWorker) deliver(ctx context.Context, out domain.Output, payload []
 		retryCount = w.cfg.DefaultRetryCount
 	}
 	if delayMs <= 0 {
-		delayMs = w.cfg.DefaultRetryDelayMs
+		delayMs = int(w.cfg.DefaultRetryDelay.Milliseconds())
 	}
 	var lastErr error
 	for i := range retryCount {

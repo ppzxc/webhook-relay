@@ -552,7 +552,7 @@ func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
 	}
 	registry := &mockRegistryCountingError{sender: sender}
 
-	cfg := service.RelayWorkerConfig{DefaultRetryCount: 1, DefaultRetryDelayMs: 10}
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 1, DefaultRetryDelay: 10 * time.Millisecond}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
@@ -600,7 +600,7 @@ func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
 	registry := &mockRegistryCountingError{sender: sender}
 
 	// DefaultRetryCount=5 but per-output RetryCount=1 should win.
-	cfg := service.RelayWorkerConfig{DefaultRetryCount: 5, DefaultRetryDelayMs: 10}
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 5, DefaultRetryDelay: 10 * time.Millisecond}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
