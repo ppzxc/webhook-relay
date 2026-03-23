@@ -8,31 +8,47 @@ server:
     keyFile: ""
 
 log:
-  level: info    # debug, info, warn, error
-  format: json   # json, text
-
-expression:
-  defaultEngine: cel  # cel or expr
+  level: INFO    # DEBUG, INFO, WARN, ERROR
+  format: JSON   # JSON, TEXT
 
 inputs:
   - id: beszel
     type: BESZEL
-    parser: json      # json, form, xml, logfmt, regex
+    engine: CEL          # required — used for filter/mapping/routing; CEL or EXPR
+    parser: JSON         # JSON, FORM, XML, LOGFMT, REGEX
     secret: "change-me"
+    rules:
+      # Rule 1: conditional routing for HIGH severity
+      - filter: 'data.severity == "HIGH"'
+        mapping:
+          level: '"CRITICAL"'
+        routing:
+          - condition: 'data.level == "CRITICAL"'
+            outputIds: [ops-webhook]
+      # Rule 2: always forward to notification bot (no filter)
+      - outputIds: [naver-works-bot]
+
   - id: dozzle
     type: DOZZLE
-    parser: json
+    engine: CEL
+    parser: JSON
     secret: "change-me"
+    rules:
+      - outputIds: [ops-webhook]   # simple: no filter/routing, send to all
+
   - id: tcp-input
     type: GENERIC
+    engine: CEL
     address: ":9001"
     delimiter: "\n"
-    parser: json
-    secret: ""  # secret unused for TCP inputs (no token auth)
+    parser: JSON
+    rules:
+      - outputIds: [ops-webhook]
 
 outputs:
   - id: ops-webhook
     type: WEBHOOK
+    engine: CEL          # required — used for template evaluation; CEL or EXPR
     url: "https://hooks.example.com/xyz"
     template:
       text: 'data.input + ": " + data.payload'
@@ -45,6 +61,7 @@ outputs:
   # Dot-notation keys (content.type, content.text) produce nested JSON.
   - id: naver-works-bot
     type: WEBHOOK
+    engine: CEL
     url: "https://naver-works-bot.nanoit.kr/api/v1/bots/1/text"
     secret: "change-me-jwt-token"   # Bearer JWT issued by Naver Works
     template:
@@ -53,24 +70,6 @@ outputs:
     retryCount: 3
     retryDelayMs: 1000
     timeoutSec: 10
-
-rules:
-  - inputId: beszel
-    engine: cel           # override default engine per rule
-    filter: 'data.input == "BESZEL"'
-    mapping:
-      severity: '"HIGH"'
-    routing:
-      - condition: 'data.severity == "HIGH"'
-        outputIds: [ops-webhook]
-  - inputId: dozzle
-    outputIds: [ops-webhook]  # simple: no filter/routing, send to all
-
-  # Example: forward both Beszel and Dozzle alerts to Naver Works Bot
-  # - inputId: beszel
-  #   outputIds: [naver-works-bot]
-  # - inputId: dozzle
-  #   outputIds: [naver-works-bot]
 
 storage:
   type: SQLITE
