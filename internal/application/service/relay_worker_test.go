@@ -77,6 +77,27 @@ func newExprRegistry() output.ExpressionEngineRegistry {
 	return reg
 }
 
+// processedChan returns a buffered channel and an OnProcessed callback that signals it.
+func processedChan() (chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	return ch, func() {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// waitForProcessed blocks until the processed channel receives a signal or the test times out.
+func waitForProcessed(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for message processing")
+	}
+}
+
 func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
 	msg := domain.Message{ID: "w-err", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
@@ -93,13 +114,17 @@ func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
 
-	time.Sleep(150 * time.Millisecond)
 	if sender.count.Load() == 0 {
 		t.Error("expected send to be called despite UpdateDeliveryState error")
 	}
@@ -116,13 +141,17 @@ func TestRelayWorker_DeliverSuccess(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
 
-	time.Sleep(150 * time.Millisecond)
 	if sender.count.Load() == 0 {
 		t.Error("expected at least one send call")
 	}
@@ -142,12 +171,16 @@ func TestRelayWorker_NoRule_Nacks(t *testing.T) {
 	registry := &mockRegistry{sender: &mockSender{}}
 	ruleReader := &mockRuleReaderWithError{err: errors.New("no rule")}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if !nackCalled.Load() {
 		t.Error("expected nack to be called when no rule found")
@@ -197,12 +230,16 @@ func TestRelayWorker_SendError_MarksAsFailed(t *testing.T) {
 	}
 	registry := &mockRegistryFn{senderFn: func() output.OutputSender { return &mockSenderError{} }}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if !nackCalled.Load() {
 		t.Error("expected nack when send fails")
@@ -253,12 +290,16 @@ func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Error("expected send when filter passes")
@@ -281,12 +322,16 @@ func TestRelayWorker_FilterFalse_Skips(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() != 0 {
 		t.Error("expected no send when filter rejects")
@@ -323,12 +368,16 @@ func TestRelayWorker_EmptyFilter_PassesAll(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Error("expected send when no filter set")
@@ -349,12 +398,16 @@ func TestRelayWorker_EmptyRouting_AllOutputs(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() != 2 {
 		t.Errorf("expected 2 sends (all outputs), got %d", sender.count.Load())
@@ -381,12 +434,16 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() != 1 {
 		t.Errorf("expected 1 send (only c1 matched), got %d", sender.count.Load())
@@ -414,12 +471,16 @@ func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Fatal("expected send call")
@@ -456,12 +517,16 @@ func TestRelayWorker_NoTemplate_UsesRawPayload(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Fatal("expected send call")
@@ -501,12 +566,16 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Fatal("expected send call")
@@ -552,13 +621,14 @@ func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
 	}
 	registry := &mockRegistryCountingError{sender: sender}
 
-	cfg := service.RelayWorkerConfig{DefaultRetryCount: 1, DefaultRetryDelay: 10 * time.Millisecond}
+	processed, onProcessed := processedChan()
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 1, DefaultRetryDelay: 10 * time.Millisecond, OnProcessed: onProcessed}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if got := sender.count.Load(); got != 1 {
 		t.Errorf("sender called %d times, want exactly 1 (DefaultRetryCount=1)", got)
@@ -576,12 +646,13 @@ func TestRelayWorker_ZeroConfig_UsesDefaults(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.RelayWorkerConfig{})
+	processed, onProcessed := processedChan()
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.RelayWorkerConfig{OnProcessed: onProcessed})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Error("expected at least one send call with zero config (uses defaults)")
@@ -600,13 +671,14 @@ func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
 	registry := &mockRegistryCountingError{sender: sender}
 
 	// DefaultRetryCount=5 but per-output RetryCount=1 should win.
-	cfg := service.RelayWorkerConfig{DefaultRetryCount: 5, DefaultRetryDelay: 10 * time.Millisecond}
+	processed, onProcessed := processedChan()
+	cfg := service.RelayWorkerConfig{DefaultRetryCount: 5, DefaultRetryDelay: 10 * time.Millisecond, OnProcessed: onProcessed}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if got := sender.count.Load(); got != 1 {
 		t.Errorf("sender called %d times, want 1 (per-output RetryCount=1 overrides default=5)", got)
@@ -642,12 +714,16 @@ func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: &mockSender{}}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if n := updateCount.Load(); n != 0 {
 		t.Errorf("UpdateDeliveryState called %d times, want 0 (invalid transition must be skipped)", n)
@@ -680,12 +756,16 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Error("builtin key 'input' was overwritten by ParsedData — filter failed when it should have passed")
@@ -718,12 +798,16 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	}
 	registry := &mockRegistry{sender: sender}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
-	time.Sleep(150 * time.Millisecond)
+	waitForProcessed(t, processed)
 
 	if sender.count.Load() == 0 {
 		t.Fatal("expected sender to be called")
