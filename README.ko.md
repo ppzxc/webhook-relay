@@ -364,7 +364,7 @@ Content-Type: application/json
 
 ### 메시지 조회
 
-ID로 메시지를 조회한다. `inputId`는 원래 메시지를 수신한 입력과 일치해야 한다.
+ID로 메시지를 조회한다. `inputId`는 인증(Bearer 토큰 조회)에만 사용되며, 메시지 조회는 `messageId`만으로 이루어진다.
 
 ```
 GET /inputs/{inputId}/messages/{messageId}
@@ -377,11 +377,10 @@ Authorization: Bearer <secret>
   "id": "01JXXXXXXXXXXXXXXXXXXXXXX",
   "version": 1,
   "input": "BESZEL",
-  "payload": "{\"host\":\"server1\",\"status\":\"down\"}",
+  "payload": {"host": "server1", "status": "down"},
   "createdAt": "2026-03-24T12:00:00Z",
   "status": "PENDING",
-  "retryCount": 0,
-  "lastAttemptAt": null
+  "retryCount": 0
 }
 ```
 
@@ -392,6 +391,8 @@ Authorization: Bearer <secret>
 | `PENDING` | 큐에 등록됨, 아직 처리되지 않음 |
 | `DELIVERED` | 매칭된 모든 아웃풋에 성공적으로 전달됨 |
 | `FAILED` | 모든 재시도 소진, 전달 실패 |
+
+참고: `lastAttemptAt`는 전달 시도가 없으면 응답에서 생략된다.
 
 **에러 응답 (RFC 7807):**
 

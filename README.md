@@ -364,7 +364,7 @@ Header: `Location: /inputs/{inputId}/messages/{messageId}`
 
 ### Get Message
 
-Retrieve a message by ID. The `inputId` must match the input that originally received the message.
+Retrieve a message by ID. The `inputId` is used only for authentication (Bearer token lookup); message lookup is by `messageId` alone.
 
 ```
 GET /inputs/{inputId}/messages/{messageId}
@@ -377,11 +377,10 @@ Response `200 OK`:
   "id": "01JXXXXXXXXXXXXXXXXXXXXXX",
   "version": 1,
   "input": "BESZEL",
-  "payload": "{\"host\":\"server1\",\"status\":\"down\"}",
+  "payload": {"host": "server1", "status": "down"},
   "createdAt": "2026-03-24T12:00:00Z",
   "status": "PENDING",
-  "retryCount": 0,
-  "lastAttemptAt": null
+  "retryCount": 0
 }
 ```
 
@@ -392,6 +391,8 @@ Response `200 OK`:
 | `PENDING` | Queued, not yet processed |
 | `DELIVERED` | Successfully delivered to all matched outputs |
 | `FAILED` | All retry attempts exhausted without successful delivery |
+
+Note: `lastAttemptAt` is omitted from the response when no delivery has been attempted yet.
 
 **Error responses (RFC 7807):**
 
