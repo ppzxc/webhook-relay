@@ -342,3 +342,114 @@ worker:
 		t.Errorf("worker.pollBackoff = %q, want \"1s\"", cfg.Worker.PollBackoff)
 	}
 }
+
+func TestLoad_RotationConfigDefaults(t *testing.T) {
+	cfg, err := config.Load(writeConfig(t, testYAML))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.Storage.Rotation.Enabled {
+		t.Error("rotation.enabled should default to false")
+	}
+	if cfg.Storage.Rotation.Retention != "720h" {
+		t.Errorf("rotation.retention = %q, want \"720h\"", cfg.Storage.Rotation.Retention)
+	}
+	if cfg.Storage.Rotation.Interval != "1h" {
+		t.Errorf("rotation.interval = %q, want \"1h\"", cfg.Storage.Rotation.Interval)
+	}
+}
+
+const rotationBaseYAML = `
+inputs:
+  - id: beszel
+    engine: CEL
+    secret: s
+outputs:
+  - id: ch1
+    type: WEBHOOK
+    engine: CEL
+    url: https://example.com
+queue:
+  type: FILE
+  path: ./data/queue
+`
+
+func TestLoad_RotationConfigCustom(t *testing.T) {
+	yaml := rotationBaseYAML + `
+storage:
+  type: SQLITE
+  path: ./data/test.db
+  rotation:
+    enabled: true
+    retention: "168h"
+    interval: "30m"
+    statuses: ["DELIVERED"]
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.Storage.Rotation.Enabled {
+		t.Error("rotation.enabled should be true")
+	}
+	if cfg.Storage.Rotation.Retention != "168h" {
+		t.Errorf("rotation.retention = %q, want \"168h\"", cfg.Storage.Rotation.Retention)
+	}
+	if len(cfg.Storage.Rotation.Statuses) != 1 || cfg.Storage.Rotation.Statuses[0] != "DELIVERED" {
+		t.Errorf("rotation.statuses = %v, want [DELIVERED]", cfg.Storage.Rotation.Statuses)
+	}
+}
+
+func TestLoad_RotationConfig_InvalidRetention(t *testing.T) {
+	yaml := rotationBaseYAML + `
+storage:
+  type: SQLITE
+  path: ./data/test.db
+  rotation:
+    enabled: true
+    retention: "not-a-duration"
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid rotation.retention duration")
+	}
+	if !strings.Contains(err.Error(), "rotation.retention") {
+		t.Errorf("error should mention rotation.retention, got: %v", err)
+	}
+}
+
+func TestLoad_RotationConfig_InvalidInterval(t *testing.T) {
+	yaml := rotationBaseYAML + `
+storage:
+  type: SQLITE
+  path: ./data/test.db
+  rotation:
+    enabled: true
+    interval: "bad"
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid rotation.interval duration")
+	}
+	if !strings.Contains(err.Error(), "rotation.interval") {
+		t.Errorf("error should mention rotation.interval, got: %v", err)
+	}
+}
+
+func TestLoad_RotationConfig_InvalidStatus(t *testing.T) {
+	yaml := rotationBaseYAML + `
+storage:
+  type: SQLITE
+  path: ./data/test.db
+  rotation:
+    enabled: true
+    statuses: ["INVALID_STATUS"]
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid rotation status")
+	}
+	if !strings.Contains(err.Error(), "rotation.statuses") {
+		t.Errorf("error should mention rotation.statuses, got: %v", err)
+	}
+}
