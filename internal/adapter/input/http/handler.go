@@ -14,11 +14,12 @@ import (
 )
 
 type Handler struct {
-	uc input.ReceiveMessageUseCase
+	receiveUC input.ReceiveMessageUseCase
+	getUC     input.GetMessageUseCase
 }
 
-func NewHandler(uc input.ReceiveMessageUseCase) *Handler {
-	return &Handler{uc: uc}
+func NewHandler(receiveUC input.ReceiveMessageUseCase, getUC input.GetMessageUseCase) *Handler {
+	return &Handler{receiveUC: receiveUC, getUC: getUC}
 }
 
 func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
@@ -37,7 +38,7 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messageID, err := h.uc.Receive(r.Context(), inputType, r.Header.Get("Content-Type"), body)
+	messageID, err := h.receiveUC.Receive(r.Context(), inputType, r.Header.Get("Content-Type"), body)
 	if err != nil {
 		mapError(w, r, err)
 		return

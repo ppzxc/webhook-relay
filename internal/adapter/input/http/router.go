@@ -20,13 +20,13 @@ type WSHandler interface {
 	ServeWS(w http.ResponseWriter, r *http.Request, inputType domain.InputType)
 }
 
-func NewRouter(uc input.ReceiveMessageUseCase, resolver input.InputResolver, ws WSHandler) *chi.Mux {
+func NewRouter(receiveUC input.ReceiveMessageUseCase, getUC input.GetMessageUseCase, resolver input.InputResolver, ws WSHandler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(apiVersionMiddleware(APIVersion))
 
-	h := NewHandler(uc)
+	h := NewHandler(receiveUC, getUC)
 
 	r.Get("/healthz", h.Healthz)
 	r.Get("/docs", apidocs.RedocHTMLHandler)
