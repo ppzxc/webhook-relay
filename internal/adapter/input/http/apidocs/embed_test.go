@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"relaybox/internal/apidocs"
+	"relaybox/internal/adapter/input/http/apidocs"
 )
 
 func TestOpenAPIHandler(t *testing.T) {

@@ -1,10 +1,11 @@
-package config
+package outputconfig
 
 import (
 	"context"
 	"fmt"
 	"sync"
 
+	"relaybox/internal/config"
 	"relaybox/internal/domain"
 )
 
@@ -19,13 +20,13 @@ type InMemoryRuleConfigReader struct {
 	inputs map[string]inputEntry // keyed by input ID
 }
 
-func NewInMemoryRuleConfigReader(cfg *Config) *InMemoryRuleConfigReader {
+func NewInMemoryRuleConfigReader(cfg *config.Config) *InMemoryRuleConfigReader {
 	r := &InMemoryRuleConfigReader{}
 	r.Update(cfg)
 	return r
 }
 
-func (r *InMemoryRuleConfigReader) Update(cfg *Config) {
+func (r *InMemoryRuleConfigReader) Update(cfg *config.Config) {
 	outputsByID := make(map[string]domain.Output, len(cfg.Outputs))
 	for _, c := range cfg.Outputs {
 		outputsByID[c.ID] = domain.Output{

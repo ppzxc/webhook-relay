@@ -12,6 +12,7 @@ import (
 	"time"
 
 	httpadapter "relaybox/internal/adapter/input/http"
+	outputconfig "relaybox/internal/adapter/output/config"
 	"relaybox/internal/adapter/output/expression"
 	"relaybox/internal/adapter/output/filequeue"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
@@ -86,7 +87,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	registry := webhookadapter.NewRegistry(map[domain.OutputType]output.OutputSender{
 		domain.OutputTypeWebhook: sender,
 	})
-	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
+	ruleReader := outputconfig.NewInMemoryRuleConfigReader(cfg)
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 

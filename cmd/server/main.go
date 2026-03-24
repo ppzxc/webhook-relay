@@ -19,6 +19,7 @@ import (
 	"relaybox/internal/adapter/input/parser"
 	tcpadapter "relaybox/internal/adapter/input/tcp"
 	wsadapter "relaybox/internal/adapter/input/websocket"
+	outputconfig "relaybox/internal/adapter/output/config"
 	"relaybox/internal/adapter/output/expression"
 	"relaybox/internal/adapter/output/filequeue"
 	mariadbadapter "relaybox/internal/adapter/output/mariadb"
@@ -121,7 +122,7 @@ func runServer(cfgPath string) error {
 	exprRegistry.Register(exprEngine)
 
 	// Config-based routing (hot-reload support)
-	ruleReader := cfgpkg.NewInMemoryRuleConfigReader(cfg)
+	ruleReader := outputconfig.NewInMemoryRuleConfigReader(cfg)
 
 	// Viper WatchConfig -> hot-reload
 	v, err := cfgpkg.NewViper(cfgPath)

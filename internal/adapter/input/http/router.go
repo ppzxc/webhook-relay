@@ -6,7 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"relaybox/internal/adapter/input/websocket"
-	"relaybox/internal/apidocs"
+	"relaybox/internal/adapter/input/http/apidocs"
 	"relaybox/internal/application/port/input"
 )
 
