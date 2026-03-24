@@ -4,36 +4,40 @@ info:
   title: relaybox API
   version: "2026-03-20"
   description: |
-    relaybox — generic relay hub. Receives messages from monitoring apps (Beszel, Dozzle, etc.)
-    and forwards them to external outputs via templates.
+    relaybox — 범용 릴레이 허브. 모니터링 앱(Beszel, Dozzle 등)으로부터 메시지를 수신하여 템플릿을 통해 외부 출력으로 전달합니다.
 
 servers:
   - url: http://localhost:8080
-    description: Local development
+    description: 로컬 개발
 
 security:
   - bearerAuth: []
 
 tags:
   - name: messages
-    description: Message management
+    description: 메시지 관리
   - name: inputs
-    description: Input management
+    description: 입력 관리
   - name: outputs
-    description: Output management
+    description: 출력 관리
   - name: health
-    description: Health check
+    description: 헬스 체크
 
 paths:
   /healthz:
     get:
-      summary: Health check
+      summary: 헬스 체크
       operationId: healthz
       tags: [health]
       security: []
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/healthz
       responses:
         "200":
-          description: Service is healthy
+          description: 서비스 정상
           content:
             application/json:
               schema:
@@ -43,28 +47,41 @@ paths:
                     type: string
                     example: ok
                 required: [status]
+              example:
+                status: ok
 
   /inputs/{inputId}/messages:
     post:
-      summary: Receive message
+      summary: 메시지 수신
       operationId: postMessage
       tags: [messages]
       parameters:
         - $ref: "#/components/parameters/inputId"
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl -X POST http://localhost:8080/inputs/beszel/messages \
+              -H "Authorization: Bearer <secret>" \
+              -H "Content-Type: application/json" \
+              -d '{"title":"CPU Alert","message":"CPU usage exceeded 90% on server-01"}'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: Input-specific JSON payload
+              description: 입력별 JSON 페이로드
               additionalProperties: true
+            example:
+              title: "CPU Alert"
+              message: "CPU usage exceeded 90% on server-01"
       responses:
         "201":
-          description: Message created
+          description: 메시지 생성됨
           headers:
             Location:
-              description: URL of the created message
+              description: 생성된 메시지의 URL
               schema:
                 type: string
                 example: /inputs/beszel/messages/01J...
@@ -72,6 +89,11 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MessageCreatedResponse"
+              example:
+                id: "01JEXAMPLE000000000000001"
+                inputId: beszel
+                status: PENDING
+                createdAt: "2026-03-24T12:00:00Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "413":
@@ -80,7 +102,7 @@ paths:
           $ref: "#/components/responses/InternalServerError"
 
     get:
-      summary: List messages for an input
+      summary: 입력별 메시지 목록 조회
       operationId: listMessages
       tags: [messages]
       parameters:
@@ -95,48 +117,88 @@ paths:
           schema:
             type: integer
             default: 0
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl "http://localhost:8080/inputs/beszel/messages?limit=20&offset=0" \
+              -H "Authorization: Bearer <secret>"
       responses:
         "200":
-          description: Message list
+          description: 메시지 목록
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/Message"
+              example:
+                - id: "01JEXAMPLE000000000000001"
+                  inputId: beszel
+                  status: DELIVERED
+                  createdAt: "2026-03-24T12:00:00Z"
+                  retryCount: 1
+                  lastAttemptAt: "2026-03-24T12:00:05Z"
+                - id: "01JEXAMPLE000000000000002"
+                  inputId: beszel
+                  status: PENDING
+                  createdAt: "2026-03-24T11:55:00Z"
+                  retryCount: 0
+                  lastAttemptAt: null
         "401":
           $ref: "#/components/responses/Unauthorized"
 
   /inputs/{inputId}/messages/{messageId}:
     get:
-      summary: Get message by ID
+      summary: 메시지 ID로 조회
       operationId: getMessage
       tags: [messages]
       parameters:
         - $ref: "#/components/parameters/inputId"
         - $ref: "#/components/parameters/messageId"
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/inputs/beszel/messages/01JEXAMPLE000000000000001 \
+              -H "Authorization: Bearer <secret>"
       responses:
         "200":
-          description: Message found
+          description: 메시지 조회 성공
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Message"
+              example:
+                id: "01JEXAMPLE000000000000001"
+                inputId: beszel
+                status: DELIVERED
+                createdAt: "2026-03-24T12:00:00Z"
+                retryCount: 1
+                lastAttemptAt: "2026-03-24T12:00:05Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
 
     patch:
-      summary: Update message status
+      summary: 메시지 상태 변경
       operationId: patchMessage
       tags: [messages]
       description: |
-        Allowed transition: FAILED → PENDING (manual re-queue).
-        All other transitions return 422.
+        허용 전환: FAILED → PENDING (수동 재큐잉).
+        그 외 전환은 422를 반환합니다.
       parameters:
         - $ref: "#/components/parameters/inputId"
         - $ref: "#/components/parameters/messageId"
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl -X PATCH http://localhost:8080/inputs/beszel/messages/01JEXAMPLE000000000000001 \
+              -H "Authorization: Bearer <secret>" \
+              -H "Content-Type: application/json" \
+              -d '{"status":"PENDING"}'
       requestBody:
         required: true
         content:
@@ -148,13 +210,22 @@ paths:
                   type: string
                   enum: [PENDING]
               required: [status]
+            example:
+              status: PENDING
       responses:
         "200":
-          description: Message updated
+          description: 메시지 업데이트됨
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Message"
+              example:
+                id: "01JEXAMPLE000000000000001"
+                inputId: beszel
+                status: PENDING
+                createdAt: "2026-03-24T12:00:00Z"
+                retryCount: 1
+                lastAttemptAt: "2026-03-24T12:00:05Z"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -164,69 +235,106 @@ paths:
 
   /inputs:
     get:
-      summary: List inputs
+      summary: 입력 목록 조회
       operationId: listInputs
       security: []
       tags: [inputs]
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/inputs
       responses:
         "200":
-          description: Input list
+          description: 입력 목록
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/Input"
+              example:
+                - id: beszel
+                - id: dozzle
 
   /inputs/{inputId}:
     get:
-      summary: Get input by ID
+      summary: 입력 ID로 조회
       operationId: getInput
       security: []
       tags: [inputs]
       parameters:
         - $ref: "#/components/parameters/inputId"
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/inputs/beszel
       responses:
         "200":
-          description: Input found
+          description: 입력 조회 성공
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Input"
+              example:
+                id: beszel
         "404":
           $ref: "#/components/responses/NotFound"
 
   /outputs:
     get:
-      summary: List outputs
+      summary: 출력 목록 조회
       operationId: listOutputs
       security: []
       tags: [outputs]
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/outputs
       responses:
         "200":
-          description: Output list
+          description: 출력 목록
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/Output"
+              example:
+                - id: ops-webhook
+                  type: WEBHOOK
+                  url: "https://hooks.example.com/xyz"
+                  retryCount: 3
+                  retryDelayMs: 1000
 
   /outputs/{outputId}:
     get:
-      summary: Get output by ID
+      summary: 출력 ID로 조회
       operationId: getOutput
       security: []
       tags: [outputs]
       parameters:
         - $ref: "#/components/parameters/outputId"
+      x-codeSamples:
+        - lang: Shell
+          label: curl
+          source: |
+            curl http://localhost:8080/outputs/ops-webhook
       responses:
         "200":
-          description: Output found
+          description: 출력 조회 성공
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Output"
+              example:
+                id: ops-webhook
+                type: WEBHOOK
+                url: "https://hooks.example.com/xyz"
+                retryCount: 3
+                retryDelayMs: 1000
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -235,7 +343,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Input-specific bearer token from config
+      description: 입력별 Bearer 토큰 (config에서 설정)
 
   parameters:
     inputId:
@@ -265,9 +373,9 @@ components:
       type: string
       enum: [PENDING, DELIVERED, FAILED]
       description: |
-        Message delivery status.
-        Transitions: PENDING → DELIVERED (success), PENDING → FAILED (retries exhausted),
-        FAILED → PENDING (manual re-queue via PATCH).
+        메시지 전달 상태.
+        전환: PENDING → DELIVERED (성공), PENDING → FAILED (재시도 소진),
+        FAILED → PENDING (PATCH를 통한 수동 재큐잉).
 
     Message:
       type: object
@@ -284,7 +392,7 @@ components:
           format: date-time
         retryCount:
           type: integer
-          description: Number of delivery attempts
+          description: 전달 시도 횟수
         lastAttemptAt:
           type: ["string", "null"]
           format: date-time
@@ -329,7 +437,7 @@ components:
 
     Problem:
       type: object
-      description: RFC 7807/9457 Problem Details
+      description: RFC 7807/9457 Problem Details 오류 응답
       properties:
         type:
           type: string
@@ -349,32 +457,57 @@ components:
 
   responses:
     Unauthorized:
-      description: Missing or invalid bearer token
+      description: Bearer 토큰 누락 또는 유효하지 않음
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+          example:
+            type: /errors/Unauthorized
+            title: Unauthorized
+            status: 401
+            detail: "invalid or missing token for input: beszel"
     NotFound:
-      description: Resource not found
+      description: 리소스를 찾을 수 없음
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+          example:
+            type: /errors/NotFound
+            title: Not Found
+            status: 404
+            detail: "message not found"
     PayloadTooLarge:
-      description: Request body exceeds 1MB limit
+      description: 요청 본문이 1MB 제한 초과
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+          example:
+            type: /errors/PayloadTooLarge
+            title: Payload Too Large
+            status: 413
+            detail: "request body exceeds 1MB limit"
     UnprocessableEntity:
-      description: Invalid status transition
+      description: 유효하지 않은 상태 전환
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+          example:
+            type: /errors/UnprocessableEntity
+            title: Unprocessable Entity
+            status: 422
+            detail: "only status=\"PENDING\" is accepted"
     InternalServerError:
-      description: Unexpected server error
+      description: 예기치 않은 서버 오류
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+          example:
+            type: /errors/InternalServerError
+            title: Internal Server Error
+            status: 500
+            detail: "unexpected error occurred"

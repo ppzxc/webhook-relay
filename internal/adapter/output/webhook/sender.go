@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -44,12 +45,26 @@ func (s *Sender) Send(ctx context.Context, out domain.Output, payload []byte) er
 	if out.Secret != "" {
 		req.Header.Set("Authorization", "Bearer "+out.Secret)
 	}
+	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("send: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	respBody, _ := io.ReadAll(resp.Body)
+	slog.Info("webhook sent",
+		"output", out.ID,
+		"url", out.URL,
+		"statusCode", resp.StatusCode,
+		"elapsed", time.Since(start),
+	)
+	slog.Debug("webhook detail",
+		"output", out.ID,
+		"requestBody", string(payload),
+		"responseBody", string(respBody),
+		"requestHeaders", req.Header,
+		"responseHeaders", resp.Header,
+	)
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook returned %d", resp.StatusCode)
 	}

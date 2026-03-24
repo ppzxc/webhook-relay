@@ -359,7 +359,7 @@ func setupLogger(cfg *cfgpkg.Config) {
 func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Closer, error) {
 	switch strings.ToUpper(cfg.Type) {
 	case "SQLITE":
-		repo, err := sqliteadapter.New(cfg.Path)
+		repo, err := sqliteadapter.New(cfg.Path, cfg.TableName)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sqlite repository: %w", err)
 		}
@@ -371,6 +371,7 @@ func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Close
 			MaxOpenConns:    cfg.MaxOpenConns,
 			MaxIdleConns:    cfg.MaxIdleConns,
 			ConnMaxLifetime: lifetime,
+			TableName:       cfg.TableName,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("mariadb repository: %w", err)

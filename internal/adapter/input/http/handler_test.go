@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	httpadapter "relaybox/internal/adapter/input/http"
 	inputport "relaybox/internal/application/port/input"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 type mockUseCase struct {
@@ -732,6 +734,47 @@ func TestHandler_GetOutput_NotFound(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+}
+
+func TestPostMessage_LogsInfoOnSuccess(t *testing.T) {
+	h := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(h))
+	defer slog.SetDefault(orig)
+
+	router := newTestRouter(func(_ context.Context, _ string, _ string, _ []byte) (string, error) {
+		return "01JTEST00000000000000000", nil
+	}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/inputs/beszel/messages", strings.NewReader(`{"level":"critical"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", w.Code)
+	}
+
+	var found bool
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "message received" {
+			if _, ok := rec.Attrs["input"]; !ok {
+				t.Error("log record missing key: input")
+			}
+			if _, ok := rec.Attrs["messageID"]; !ok {
+				t.Error("log record missing key: messageID")
+			}
+			if _, ok := rec.Attrs["payloadSize"]; !ok {
+				t.Error("log record missing key: payloadSize")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error(`expected INFO "message received" log record not found`)
 	}
 }
 

@@ -2,6 +2,7 @@ package sqlite_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -17,12 +18,40 @@ var _ interface {
 
 func newTestRepo(t *testing.T) *sqliteadapter.Repository {
 	t.Helper()
-	repo, err := sqliteadapter.New(":memory:")
+	repo, err := sqliteadapter.New(":memory:", "")
 	if err != nil {
 		t.Fatalf("New() error: %v", err)
 	}
 	t.Cleanup(func() { repo.Close() })
 	return repo
+}
+
+func TestRepository_CustomTableName(t *testing.T) {
+	dir := t.TempDir()
+	repo, err := sqliteadapter.New(filepath.Join(dir, "test.db"), "custom_msgs")
+	if err != nil {
+		t.Fatalf("New with custom table: %v", err)
+	}
+	defer repo.Close()
+
+	msg := domain.Message{
+		ID:        "01TEST",
+		Version:   1,
+		Input:     "test-input",
+		Payload:   domain.RawPayload(`{"key":"value"}`),
+		CreatedAt: time.Now().UTC().Truncate(time.Second),
+		Status:    domain.MessageStatusPending,
+	}
+	if err := repo.Save(context.Background(), msg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := repo.FindByID(context.Background(), msg.ID)
+	if err != nil {
+		t.Fatalf("FindByID: %v", err)
+	}
+	if got.ID != msg.ID {
+		t.Errorf("ID mismatch: got %q, want %q", got.ID, msg.ID)
+	}
 }
 
 func TestRepository_SaveAndFindByID(t *testing.T) {

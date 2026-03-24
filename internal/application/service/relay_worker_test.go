@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/application/service"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 type mockMessageQueue struct {
@@ -622,6 +624,58 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	}
 	if result["tag"] != "[beszel]" {
 		t.Errorf("tag = %v, want [beszel]", result["tag"])
+	}
+}
+
+func TestRelayWorker_LogsInfoOnProcessing(t *testing.T) {
+	h := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(h))
+	defer slog.SetDefault(orig)
+
+	msgObj := domain.Message{
+		ID: "log-test", Input: "beszel",
+		Payload: domain.RawPayload(`{"host":"server1"}`),
+		Status:  domain.MessageStatusPending, Version: 1,
+	}
+	queue := &mockMessageQueue{messages: []domain.Message{msgObj}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.Hooks.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
+
+	hasProcessingLog := false
+	hasDeliveredLog := false
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "processing message" {
+			hasProcessingLog = true
+		}
+		if rec.Level == slog.LevelInfo && rec.Msg == "message delivered" {
+			hasDeliveredLog = true
+		}
+	}
+	if !hasProcessingLog {
+		t.Error(`expected INFO "processing message" log record not found`)
+	}
+	if !hasDeliveredLog {
+		t.Error(`expected INFO "message delivered" log record not found`)
 	}
 }
 

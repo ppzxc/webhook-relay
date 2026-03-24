@@ -9,6 +9,8 @@ server:
 
 log:
   level: INFO    # DEBUG, INFO, WARN, ERROR
+                 # 주의: DEBUG 레벨은 요청 헤더(Authorization 포함) 및 전체 바디를 로그에 기록합니다.
+                 #       운영 환경에서는 INFO 이상을 권장합니다.
   format: JSON   # JSON, TEXT
 
 inputs:
@@ -71,6 +73,7 @@ outputs:
 storage:
   type: SQLITE
   path: "./data/relaybox.db"
+  tableName: messages       # 메시지 테이블 이름 (기본값: messages)
 
 queue:
   type: FILE

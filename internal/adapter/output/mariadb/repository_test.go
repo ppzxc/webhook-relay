@@ -47,6 +47,61 @@ func newTestRepo(t *testing.T) *mariadbadapter.Repository {
 	return repo
 }
 
+func newTestRepoWithTableName(t *testing.T, tableName string) *mariadbadapter.Repository {
+	t.Helper()
+	if testing.Short() {
+		t.Skip("skipping MariaDB integration test (requires Docker)")
+	}
+	testcontainers.SkipIfProviderIsNotHealthy(t)
+
+	ctx := context.Background()
+	ctr, err := tcmariadb.Run(ctx, "mariadb:11")
+	if err != nil {
+		t.Fatalf("start MariaDB container: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := ctr.Terminate(ctx); err != nil {
+			t.Logf("terminate container: %v", err)
+		}
+	})
+
+	dsn, err := ctr.ConnectionString(ctx)
+	if err != nil {
+		t.Fatalf("get connection string: %v", err)
+	}
+
+	repo, err := mariadbadapter.New(mariadbadapter.Config{DSN: dsn, TableName: tableName})
+	if err != nil {
+		t.Fatalf("New() with tableName=%q error: %v", tableName, err)
+	}
+	t.Cleanup(func() { repo.Close() })
+	return repo
+}
+
+func TestRepository_CustomTableName(t *testing.T) {
+	repo := newTestRepoWithTableName(t, "custom_msgs")
+	ctx := context.Background()
+
+	msg := domain.Message{
+		ID:        "01TEST",
+		Version:   1,
+		Input:     "test-input",
+		Payload:   domain.RawPayload(`{"key":"value"}`),
+		CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		Status:    domain.MessageStatusPending,
+	}
+	if err := repo.Save(ctx, msg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := repo.FindByID(ctx, msg.ID)
+	if err != nil {
+		t.Fatalf("FindByID: %v", err)
+	}
+	if got.ID != msg.ID {
+		t.Errorf("ID mismatch: got %q, want %q", got.ID, msg.ID)
+	}
+}
+
 func TestRepository_SaveAndFindByID(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()

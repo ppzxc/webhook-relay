@@ -81,7 +81,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 		Queue: cfgpkg.QueueConfig{WorkerCount: 1},
 	}
 
-	repo, _ := sqliteadapter.New(":memory:")
+	repo, _ := sqliteadapter.New(":memory:", "")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	sender := webhookadapter.NewSender()
@@ -165,7 +165,7 @@ func TestE2E_ListMessages(t *testing.T) {
 		Outputs: []cfgpkg.OutputConfig{{ID: "wh1", Type: "WEBHOOK", Engine: "CEL", URL: "http://localhost:9999"}},
 		Queue:   cfgpkg.QueueConfig{WorkerCount: 1},
 	}
-	repo, _ := sqliteadapter.New(":memory:")
+	repo, _ := sqliteadapter.New(":memory:", "")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
@@ -220,7 +220,7 @@ func TestE2E_ConfigEndpoints(t *testing.T) {
 			{ID: "wh1", Type: "WEBHOOK", Engine: "CEL", URL: "http://example.com/hook", RetryCount: 3, RetryDelayMs: 100},
 		},
 	}
-	repo, _ := sqliteadapter.New(":memory:")
+	repo, _ := sqliteadapter.New(":memory:", "")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
@@ -302,7 +302,7 @@ func TestE2E_ConfigEndpoints(t *testing.T) {
 }
 
 func TestE2E_Healthz(t *testing.T) {
-	repo, _ := sqliteadapter.New(":memory:")
+	repo, _ := sqliteadapter.New(":memory:", "")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)

@@ -36,6 +36,7 @@ storage:
   maxOpenConns: 10
   maxIdleConns: 5
   connMaxLifetime: "5m"
+  tableName: messages       # 메시지 테이블 이름 (기본값: messages)
 
 queue:
   type: FILE

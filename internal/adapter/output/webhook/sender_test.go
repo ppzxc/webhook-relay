@@ -3,6 +3,7 @@ package webhook_test
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"relaybox/internal/adapter/output/webhook"
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 // compile-time interface check
@@ -61,6 +63,45 @@ func TestSender_Send(t *testing.T) {
 	}
 	if string(received) != `{"text":"BESZEL"}` {
 		t.Errorf("body = %q", received)
+	}
+}
+
+func TestSender_LogsInfoOnSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	h := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(h))
+	defer slog.SetDefault(orig)
+
+	sender := webhook.NewSender()
+	out := domain.Output{ID: "test-output", URL: srv.URL}
+
+	if err := sender.Send(context.Background(), out, []byte(`{"test":true}`)); err != nil {
+		t.Fatalf("Send() error: %v", err)
+	}
+
+	var found bool
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "webhook sent" {
+			if _, ok := rec.Attrs["output"]; !ok {
+				t.Error("log record missing key: output")
+			}
+			if _, ok := rec.Attrs["statusCode"]; !ok {
+				t.Error("log record missing key: statusCode")
+			}
+			if _, ok := rec.Attrs["elapsed"]; !ok {
+				t.Error("log record missing key: elapsed")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error(`expected INFO "webhook sent" log record not found`)
 	}
 }
 
