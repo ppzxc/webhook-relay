@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"log/slog"
@@ -49,7 +51,34 @@ func rootCmd() *cobra.Command {
 		Use: "version", Short: "Print version",
 		Run: func(_ *cobra.Command, _ []string) { fmt.Println("relaybox " + version) },
 	})
+	root.AddCommand(secretCmd())
 	return root
+}
+
+func secretCmd() *cobra.Command {
+	secret := &cobra.Command{Use: "secret", Short: "Manage secrets"}
+	var quiet bool
+	var length int
+	generate := &cobra.Command{
+		Use:   "generate",
+		Short: "Generate a cryptographically secure random secret",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			s, err := generateSecret(length)
+			if err != nil {
+				return err
+			}
+			if quiet {
+				fmt.Fprintln(cmd.OutOrStdout(), s)
+				return nil
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Secret: %s\n\nAdd to config.yaml under inputs[].secret or outputs[].secret\n", s)
+			return nil
+		},
+	}
+	generate.Flags().BoolVarP(&quiet, "quiet", "q", false, "print secret only (pipe-friendly)")
+	generate.Flags().IntVarP(&length, "length", "l", 32, "number of random bytes (minimum 16)")
+	secret.AddCommand(generate)
+	return secret
 }
 
 func runServer(cfgPath string) error {
@@ -256,6 +285,19 @@ func buildRelayWorkerConfig(wc cfgpkg.WorkerConfig) (service.RelayWorkerConfig, 
 	}
 	cfg.PollBackoff = d
 	return cfg, nil
+}
+
+// generateSecret returns a cryptographically random base64url-encoded secret of the given byte length.
+// length must be at least 16.
+func generateSecret(length int) (string, error) {
+	if length < 16 {
+		return "", fmt.Errorf("length must be at least 16, got %d", length)
+	}
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("read random bytes: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
 func setupLogger(cfg *cfgpkg.Config) {

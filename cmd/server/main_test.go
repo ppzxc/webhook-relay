@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"testing"
 	"time"
 
@@ -71,5 +72,50 @@ func TestBuildRelayWorkerConfig_InvalidPollBackoff(t *testing.T) {
 	_, err := buildRelayWorkerConfig(wc)
 	if err == nil {
 		t.Fatal("expected error for invalid pollBackoff")
+	}
+}
+
+func TestGenerateSecret_DefaultLength(t *testing.T) {
+	s, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(s) == 0 {
+		t.Fatal("expected non-empty secret")
+	}
+}
+
+func TestGenerateSecret_OutputIsBase64URL(t *testing.T) {
+	s, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(s)
+	if err != nil {
+		t.Fatalf("secret is not valid base64url: %v", err)
+	}
+	if len(decoded) != 32 {
+		t.Errorf("decoded length = %d, want 32", len(decoded))
+	}
+}
+
+func TestGenerateSecret_LengthTooShort(t *testing.T) {
+	_, err := generateSecret(15)
+	if err == nil {
+		t.Fatal("expected error for length < 16")
+	}
+}
+
+func TestGenerateSecret_UniqueEachCall(t *testing.T) {
+	a, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	b, err := generateSecret(32)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if a == b {
+		t.Error("two calls produced the same secret")
 	}
 }
