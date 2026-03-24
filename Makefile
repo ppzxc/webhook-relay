@@ -6,7 +6,12 @@ LDFLAGS  := -s -w -X main.version=$(VERSION)
 
 PLATFORMS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64
 
-.PHONY: build build-all checksums test vet clean release
+DOCKER_IMAGE  := relaybox
+DOCKER_TAG    := $(VERSION)
+COMPOSE       := docker compose
+
+.PHONY: build build-all checksums test vet clean release \
+        docker-build docker-up docker-down docker-logs
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
@@ -37,3 +42,18 @@ clean:
 	rm -rf $(DIST) $(BINARY)
 
 release: clean build-all checksums
+
+# ── Docker ───────────────────────────────────────────────
+docker-build:
+	docker build --build-arg VERSION=$(VERSION) \
+		-t $(DOCKER_IMAGE):$(DOCKER_TAG) \
+		-t $(DOCKER_IMAGE):latest .
+
+docker-up:
+	$(COMPOSE) up -d
+
+docker-down:
+	$(COMPOSE) down
+
+docker-logs:
+	$(COMPOSE) logs -f relaybox

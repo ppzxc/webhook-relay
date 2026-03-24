@@ -1,0 +1,22 @@
+services:
+  relaybox:
+    image: relaybox:${VERSION:-latest}
+    container_name: relaybox
+    network_mode: host
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - relaybox-data:/app/data
+    restart: unless-stopped
+    environment:
+      - TZ=${TZ:-Asia/Seoul}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.25"
+          memory: 64M
+
+volumes:
+  relaybox-data:
