@@ -21,6 +21,7 @@ import (
 	wsadapter "relaybox/internal/adapter/input/websocket"
 	"relaybox/internal/adapter/output/expression"
 	"relaybox/internal/adapter/output/filequeue"
+	mariadbadapter "relaybox/internal/adapter/output/mariadb"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
 	webhookadapter "relaybox/internal/adapter/output/webhook"
 	"relaybox/internal/application/port/output"
@@ -320,6 +321,18 @@ func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Close
 		repo, err := sqliteadapter.New(cfg.Path)
 		if err != nil {
 			return nil, nil, fmt.Errorf("sqlite repository: %w", err)
+		}
+		return repo, repo, nil
+	case "MARIADB":
+		lifetime, _ := time.ParseDuration(cfg.ConnMaxLifetime)
+		repo, err := mariadbadapter.New(mariadbadapter.Config{
+			DSN:             cfg.DSN,
+			MaxOpenConns:    cfg.MaxOpenConns,
+			MaxIdleConns:    cfg.MaxIdleConns,
+			ConnMaxLifetime: lifetime,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("mariadb repository: %w", err)
 		}
 		return repo, repo, nil
 	default:

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -64,8 +66,12 @@ type RuleConfig struct {
 }
 
 type StorageConfig struct {
-	Type string `mapstructure:"type"`
-	Path string `mapstructure:"path"`
+	Type            string `mapstructure:"type"`
+	Path            string `mapstructure:"path"`            // SQLite 파일 경로
+	DSN             string `mapstructure:"dsn"`             // MariaDB/MySQL DSN
+	MaxOpenConns    int    `mapstructure:"maxOpenConns"`
+	MaxIdleConns    int    `mapstructure:"maxIdleConns"`
+	ConnMaxLifetime string `mapstructure:"connMaxLifetime"` // Go duration, e.g. "5m"
 }
 
 type QueueConfig struct {
@@ -151,6 +157,15 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 var validEngines = map[string]struct{}{"CEL": {}, "EXPR": {}}
 
 func validateConfig(cfg *Config) error {
+	if strings.ToUpper(cfg.Storage.Type) == "MARIADB" && cfg.Storage.DSN == "" {
+		return fmt.Errorf("storage.dsn is required when storage.type is MARIADB")
+	}
+	if cfg.Storage.ConnMaxLifetime != "" {
+		if _, err := time.ParseDuration(cfg.Storage.ConnMaxLifetime); err != nil {
+			return fmt.Errorf("storage.connMaxLifetime: invalid duration %q: %w", cfg.Storage.ConnMaxLifetime, err)
+		}
+	}
+
 	// Build output ID set for reference checks
 	seenOutputs := make(map[string]struct{}, len(cfg.Outputs))
 	for _, c := range cfg.Outputs {
