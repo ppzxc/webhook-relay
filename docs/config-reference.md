@@ -72,8 +72,7 @@ log:
 
 | YAML 키 | 타입 | 기본값 | 필수 | 설명 |
 |---------|------|--------|------|------|
-| `inputs[].id` | string | — | **필수** | 입력 식별자. 전체에서 유일해야 함 |
-| `inputs[].type` | string | — | **필수** | 입력 타입. 허용값: `BESZEL` `DOZZLE` `GENERIC` |
+| `inputs[].id` | string | — | **필수** | 입력 식별자. 전체에서 유일해야 함. CEL 표현식에서 `data.input`으로 참조됨 |
 | `inputs[].engine` | string | — | **필수** | filter/mapping/routing 평가에 사용할 표현식 엔진. 허용값: `CEL` `EXPR` |
 | `inputs[].parser` | string | `""` | | 페이로드 파서. 허용값: `JSON` `FORM` `XML` `LOGFMT` `REGEX` |
 | `inputs[].secret` | string | `""` | | Bearer 토큰 인증 (`Authorization: Bearer <secret>`). HTTP 입력에만 적용 |
@@ -101,7 +100,6 @@ log:
 inputs:
   # HTTP 입력 — 단순 모드 (필터 없이 전달)
   - id: dozzle
-    type: DOZZLE
     engine: CEL
     parser: JSON
     secret: "change-me"
@@ -110,7 +108,6 @@ inputs:
 
   # HTTP 입력 — 조건부 라우팅
   - id: beszel
-    type: BESZEL
     engine: CEL
     parser: JSON
     secret: "change-me"
@@ -125,7 +122,6 @@ inputs:
 
   # TCP 입력
   - id: tcp-input
-    type: GENERIC
     engine: CEL
     address: ":9001"
     delimiter: "\n"

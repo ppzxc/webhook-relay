@@ -45,7 +45,7 @@ cmd/server/main.go               ← DI 조립, cobra CLI
 
 | 경로 | 역할 |
 |------|------|
-| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`InputType`, `MessageStatus`, `OutputType`), 센티넬 에러 |
+| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`MessageStatus`, `OutputType`), 센티넬 에러 |
 | `internal/application/port/input/` | `ReceiveMessageUseCase` 인터페이스 |
 | `internal/application/port/output/` | `MessageRepository`, `MessageQueue`, `OutputSender`, `OutputRegistry`, `RuleConfigReader` 인터페이스 |
 | `internal/application/service/` | `MessageService`(Receive), `RelayWorker`(Start) |
@@ -61,10 +61,10 @@ cmd/server/main.go               ← DI 조립, cobra CLI
 ## Key Design Decisions
 
 ### 열거형
-모든 열거형은 `type X string` + 대문자 상수(`"BESZEL"`, `"PENDING"` 등). 별도 `MarshalJSON` 불필요.
+도메인 열거형은 `type X string` + 대문자 상수(`"PENDING"` 등). 별도 `MarshalJSON` 불필요. `InputType`은 제거됨.
 
 ### 라우팅 키
-`InMemoryRuleConfigReader`는 rules를 **input type**(e.g. `"BESZEL"`)으로 인덱싱한다. `Update()`에서 `inputID → inputType` 변환을 수행하므로, `GetOutputs`는 반드시 `string(msg.Input)`(타입 값)를 넘겨야 한다.
+`InMemoryRuleConfigReader`는 rules를 **input ID**(e.g. `"beszel"`)로 인덱싱한다. `GetRules`는 `msg.Input`(input ID 값)을 넘겨야 한다. CEL 표현식에서 `data.input`은 input ID 값(소문자)을 담는다.
 
 ### 큐 at-least-once 보장
 파일 큐는 `Dequeue` 시 `.json` → `.json.processing` 으로 rename. `Ack`는 `.processing` 삭제, `Nack`는 원래 이름으로 rename 복구.

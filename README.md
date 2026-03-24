@@ -83,7 +83,6 @@ log:
 
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL          # required — CEL or EXPR
     parser: JSON         # JSON, FORM, XML, LOGFMT, REGEX
     secret: "change-me"
@@ -99,7 +98,6 @@ inputs:
       - outputIds: [notify-bot]
 
   - id: tcp-input
-    type: GENERIC
     engine: CEL
     address: ":9001"
     delimiter: "\n"
@@ -177,8 +175,7 @@ Each entry in the `inputs` list defines one inbound endpoint.
 
 | Field | Type | Required | Default | Values | Description |
 |-------|------|----------|---------|--------|-------------|
-| `id` | string | **Yes** | — | Any unique string | Identifier used in API URLs (`/inputs/{id}/messages`). Must be unique across all inputs. |
-| `type` | string | **Yes** | — | `BESZEL`, `DOZZLE`, `GENERIC` | Logical input type. Stored on every message as `data.input`. Use `GENERIC` for custom integrations. |
+| `id` | string | **Yes** | — | Any unique string | Identifier used in API URLs (`/inputs/{id}/messages`). Must be unique across all inputs. Stored on every message as `data.input`. |
 | `engine` | string | **Yes** | — | `CEL`, `EXPR` | Expression engine for evaluating filter/mapping/routing rules on this input. See [Expression Engine Reference](#expression-engine-reference). |
 | `parser` | string | No | `JSON` | `JSON`, `FORM`, `XML`, `LOGFMT`, `REGEX` | Parser applied to the raw request body before expression evaluation. See [Parser Reference](#parser-reference). |
 | `secret` | string | No | `""` | Any string | Bearer token required in `Authorization: Bearer <secret>`. If empty, all requests are accepted without auth. |
@@ -252,14 +249,14 @@ All expressions (filter, mapping, routing, template) share the same `data` conte
 | Variable | Type | Description |
 |----------|------|-------------|
 | `data.id` | string | Message ULID — unique identifier assigned at receive time |
-| `data.input` | string | Input type value (e.g. `BESZEL`, `DOZZLE`, `GENERIC`) |
+| `data.input` | string | Input ID value (e.g. `beszel`, `dozzle`) |
 | `data.payload` | string | Raw payload string as received |
 | `data.createdAt` | string | Receive timestamp in RFC3339 format |
 | `data.<field>` | any | Fields added or overwritten by `mapping` expressions |
 
 **Filter** — boolean expression; `false` drops the message for this rule:
 ```yaml
-filter: 'data.input == "BESZEL"'
+filter: 'data.input == "beszel"'
 ```
 
 **Mapping** — enrich `data` with computed fields:
@@ -295,12 +292,12 @@ Both engines receive the same `data` map and return the same result types. Compi
 
 **CEL example:**
 ```yaml
-filter: 'data.input == "BESZEL" && data.payload.contains("error")'
+filter: 'data.input == "beszel" && data.payload.contains("error")'
 ```
 
 **Expr example:**
 ```yaml
-filter: 'data.input == "BESZEL" && contains(data.payload, "error")'
+filter: 'data.input == "beszel" && contains(data.payload, "error")'
 ```
 
 ### Parser Reference
@@ -376,7 +373,7 @@ Response `200 OK`:
 {
   "id": "01JXXXXXXXXXXXXXXXXXXXXXX",
   "version": 1,
-  "input": "BESZEL",
+  "input": "beszel",
   "payload": {"host": "server1", "status": "down"},
   "createdAt": "2026-03-24T12:00:00Z",
   "status": "PENDING",
@@ -449,7 +446,7 @@ cmd/server/main.go               ← DI assembly, cobra CLI
 
 | Path | Role |
 |------|------|
-| `internal/domain/` | Entities (`Message`, `Output`), enums (`InputType`, `MessageStatus`, `OutputType`), sentinel errors |
+| `internal/domain/` | Entities (`Message`, `Output`), enums (`MessageStatus`, `OutputType`), sentinel errors |
 | `internal/application/port/input/` | `ReceiveMessageUseCase`, `GetMessageUseCase` interfaces |
 | `internal/application/port/output/` | `MessageRepository`, `MessageQueue`, `OutputSender`, `OutputRegistry`, `RuleConfigReader` interfaces |
 | `internal/application/service/` | `MessageService` (Receive, GetByID), `RelayWorker` (Start) |

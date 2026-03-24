@@ -83,7 +83,6 @@ log:
 
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL          # 필수 — CEL 또는 EXPR
     parser: JSON         # JSON, FORM, XML, LOGFMT, REGEX
     secret: "change-me"
@@ -99,7 +98,6 @@ inputs:
       - outputIds: [notify-bot]
 
   - id: tcp-input
-    type: GENERIC
     engine: CEL
     address: ":9001"
     delimiter: "\n"
@@ -177,8 +175,7 @@ worker:
 
 | 필드 | 타입 | 필수 | 기본값 | 허용값 | 설명 |
 |------|------|------|--------|--------|------|
-| `id` | string | **예** | — | 유니크한 문자열 | API URL에 사용되는 식별자 (`/inputs/{id}/messages`). 모든 입력 중 유니크해야 함. |
-| `type` | string | **예** | — | `BESZEL`, `DOZZLE`, `GENERIC` | 논리적 입력 타입. 모든 메시지에 `data.input`으로 저장됨. 커스텀 연동에는 `GENERIC` 사용. |
+| `id` | string | **예** | — | 유니크한 문자열 | API URL에 사용되는 식별자 (`/inputs/{id}/messages`). 모든 입력 중 유니크해야 함. 모든 메시지에 `data.input`으로 저장됨. |
 | `engine` | string | **예** | — | `CEL`, `EXPR` | 이 입력의 filter/mapping/routing 규칙 평가에 사용할 표현식 엔진. [표현식 엔진 레퍼런스](#표현식-엔진-레퍼런스) 참고. |
 | `parser` | string | 아니오 | `JSON` | `JSON`, `FORM`, `XML`, `LOGFMT`, `REGEX` | 표현식 평가 전 원본 요청 바디에 적용할 파서. [파서 레퍼런스](#파서-레퍼런스) 참고. |
 | `secret` | string | 아니오 | `""` | 임의 문자열 | `Authorization: Bearer <secret>` 헤더에 필요한 Bearer 토큰. 빈 문자열이면 인증 없이 모든 요청 허용. |
@@ -252,14 +249,14 @@ worker:
 | 변수 | 타입 | 설명 |
 |------|------|------|
 | `data.id` | string | 메시지 ULID — 수신 시 자동 할당되는 유니크 식별자 |
-| `data.input` | string | 입력 타입 값 (예: `BESZEL`, `DOZZLE`, `GENERIC`) |
+| `data.input` | string | 입력 ID 값 (예: `beszel`, `dozzle`) |
 | `data.payload` | string | 수신된 원본 페이로드 문자열 |
 | `data.createdAt` | string | RFC3339 형식의 수신 타임스탬프 |
 | `data.<field>` | any | `mapping` 표현식으로 추가되거나 덮어쓰인 필드 |
 
 **필터** — 불리언 표현식; `false`이면 이 규칙에서 메시지 드롭:
 ```yaml
-filter: 'data.input == "BESZEL"'
+filter: 'data.input == "beszel"'
 ```
 
 **매핑** — 계산된 필드로 `data` 보강:
@@ -295,12 +292,12 @@ template:
 
 **CEL 예제:**
 ```yaml
-filter: 'data.input == "BESZEL" && data.payload.contains("error")'
+filter: 'data.input == "beszel" && data.payload.contains("error")'
 ```
 
 **Expr 예제:**
 ```yaml
-filter: 'data.input == "BESZEL" && contains(data.payload, "error")'
+filter: 'data.input == "beszel" && contains(data.payload, "error")'
 ```
 
 ### 파서 레퍼런스
@@ -376,7 +373,7 @@ Authorization: Bearer <secret>
 {
   "id": "01JXXXXXXXXXXXXXXXXXXXXXX",
   "version": 1,
-  "input": "BESZEL",
+  "input": "beszel",
   "payload": {"host": "server1", "status": "down"},
   "createdAt": "2026-03-24T12:00:00Z",
   "status": "PENDING",
@@ -449,7 +446,7 @@ cmd/server/main.go               ← DI 조립, cobra CLI
 
 | 경로 | 역할 |
 |------|------|
-| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`InputType`, `MessageStatus`, `OutputType`), 센티넬 에러 |
+| `internal/domain/` | 엔티티(`Message`, `Output`), 열거형(`MessageStatus`, `OutputType`), 센티넬 에러 |
 | `internal/application/port/input/` | `ReceiveMessageUseCase`, `GetMessageUseCase` 인터페이스 |
 | `internal/application/port/output/` | `MessageRepository`, `MessageQueue`, `OutputSender`, `OutputRegistry`, `RuleConfigReader` 인터페이스 |
 | `internal/application/service/` | `MessageService`(Receive, GetByID), `RelayWorker`(Start) |

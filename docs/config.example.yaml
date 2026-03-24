@@ -13,7 +13,6 @@ log:
 
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL          # required — used for filter/mapping/routing; CEL or EXPR
     parser: JSON         # JSON, FORM, XML, LOGFMT, REGEX
     secret: "change-me"
@@ -29,7 +28,6 @@ inputs:
       - outputIds: [naver-works-bot]
 
   - id: dozzle
-    type: DOZZLE
     engine: CEL
     parser: JSON
     secret: "change-me"
@@ -37,7 +35,6 @@ inputs:
       - outputIds: [ops-webhook]   # simple: no filter/routing, send to all
 
   - id: tcp-input
-    type: GENERIC
     engine: CEL
     address: ":9001"
     delimiter: "\n"

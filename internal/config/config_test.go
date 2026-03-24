@@ -18,7 +18,6 @@ log:
   format: TEXT
 inputs:
   - id: beszel
-    type: BESZEL
     secret: test-secret
     engine: CEL
     rules:
@@ -81,7 +80,6 @@ func TestLoad_EmptyInputID(t *testing.T) {
 	yaml := `
 inputs:
   - id: ""
-    type: BESZEL
     engine: CEL
     secret: s
 `
@@ -95,11 +93,9 @@ func TestLoad_DuplicateInputID(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s1
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s2
 `
@@ -113,7 +109,6 @@ func TestLoad_InputEngineRequired(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     secret: s
 outputs:
   - id: ch1
@@ -137,7 +132,6 @@ func TestLoad_OutputEngineRequired(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s
 outputs:
@@ -161,7 +155,6 @@ func TestLoad_RuleReferencesUnknownOutput(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s
     rules:
@@ -183,7 +176,6 @@ func TestLoad_MultipleRulesPerInput(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s
     rules:
@@ -222,7 +214,6 @@ func TestLoad_WithFilterMappingRouting(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s
     rules:
@@ -264,7 +255,6 @@ func TestLoad_InvalidInputEngine(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: INVALID
     secret: s
 outputs:
@@ -292,7 +282,6 @@ func TestLoad_InvalidOutputEngine(t *testing.T) {
 	yaml := `
 inputs:
   - id: beszel
-    type: BESZEL
     engine: CEL
     secret: s
 outputs:
