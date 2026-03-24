@@ -9,13 +9,12 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"relaybox/internal/adapter/output/mariadb/db"
+	output "relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
 )
 
 // 컴파일 타임 인터페이스 검증
-var _ interface {
-	Save(context.Context, domain.Message) error
-} = (*Repository)(nil)
+var _ output.MessageRepository = (*Repository)(nil)
 
 // Config holds MariaDB connection and pool settings.
 type Config struct {

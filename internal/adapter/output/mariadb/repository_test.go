@@ -82,7 +82,9 @@ func TestRepository_UpdateDeliveryState(t *testing.T) {
 		Payload: domain.RawPayload(`{}`),
 		Status:  domain.MessageStatusPending,
 	}
-	repo.Save(ctx, msg)
+	if err := repo.Save(ctx, msg); err != nil {
+		t.Fatalf("Save() error: %v", err)
+	}
 
 	now := time.Now().UTC()
 	if err := repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusDelivered, 1, now); err != nil {
@@ -99,13 +101,15 @@ func TestRepository_FindByInput(t *testing.T) {
 	ctx := context.Background()
 
 	for _, id := range []string{"a1", "a2", "a3"} {
-		repo.Save(ctx, domain.Message{
+		if err := repo.Save(ctx, domain.Message{
 			ID:      id,
 			Input:   "beszel",
 			Payload: domain.RawPayload(`{}`),
 			Status:  domain.MessageStatusPending,
 			Version: 1,
-		})
+		}); err != nil {
+			t.Fatalf("Save() error: %v", err)
+		}
 	}
 	messages, err := repo.FindByInput(ctx, "beszel", 10, 0)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -158,6 +159,11 @@ var validEngines = map[string]struct{}{"CEL": {}, "EXPR": {}}
 func validateConfig(cfg *Config) error {
 	if strings.ToUpper(cfg.Storage.Type) == "MARIADB" && cfg.Storage.DSN == "" {
 		return fmt.Errorf("storage.dsn is required when storage.type is MARIADB")
+	}
+	if cfg.Storage.ConnMaxLifetime != "" {
+		if _, err := time.ParseDuration(cfg.Storage.ConnMaxLifetime); err != nil {
+			return fmt.Errorf("storage.connMaxLifetime: invalid duration %q: %w", cfg.Storage.ConnMaxLifetime, err)
+		}
 	}
 
 	// Build output ID set for reference checks
