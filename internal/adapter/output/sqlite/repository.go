@@ -113,4 +113,5 @@ CREATE TABLE IF NOT EXISTS messages (
     status          TEXT NOT NULL DEFAULT 'PENDING',
     retry_count     INTEGER NOT NULL DEFAULT 0,
     last_attempt_at DATETIME
-);`
+);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);`
