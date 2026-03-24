@@ -14,9 +14,10 @@ import (
 )
 
 type mockRepo struct {
-	saveFn      func(context.Context, domain.Message) error
-	updateFn    func(context.Context, string, domain.MessageStatus, int, time.Time) error
-	findByIDFn  func(string) (domain.Message, error)
+	saveFn         func(context.Context, domain.Message) error
+	updateFn       func(context.Context, string, domain.MessageStatus, int, time.Time) error
+	findByIDFn     func(string) (domain.Message, error)
+	findByInputFn  func(string, int, int) ([]domain.Message, error)
 }
 
 func (m *mockRepo) Save(ctx context.Context, a domain.Message) error { return m.saveFn(ctx, a) }
@@ -32,8 +33,11 @@ func (m *mockRepo) FindByID(_ context.Context, id string) (domain.Message, error
 	}
 	return domain.Message{}, nil
 }
-func (m *mockRepo) FindByInput(_ context.Context, _ string, _, _ int) ([]domain.Message, error) {
-	return nil, nil
+func (m *mockRepo) FindByInput(_ context.Context, inputID string, limit, offset int) ([]domain.Message, error) {
+	if m.findByInputFn != nil {
+		return m.findByInputFn(inputID, limit, offset)
+	}
+	return []domain.Message{}, nil
 }
 func (m *mockRepo) DeleteOlderThan(_ context.Context, _ time.Time, _ []domain.MessageStatus) (int64, error) {
 	return 0, nil
@@ -196,6 +200,150 @@ func TestMessageService_GetByID_NotFound(t *testing.T) {
 	svc := service.NewMessageService(repo, queue, nil, nil)
 
 	_, err := svc.GetByID(context.Background(), "nonexistent")
+	if !errors.Is(err, domain.ErrMessageNotFound) {
+		t.Fatalf("expected ErrMessageNotFound, got %v", err)
+	}
+}
+
+func TestMessageService_ListByInput_Success(t *testing.T) {
+	want := []domain.Message{
+		{ID: "msg-1", Input: "beszel", Status: domain.MessageStatusPending},
+		{ID: "msg-2", Input: "beszel", Status: domain.MessageStatusDelivered},
+	}
+	repo := &mockRepo{
+		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
+		findByInputFn: func(inputID string, limit, offset int) ([]domain.Message, error) {
+			if inputID != "beszel" {
+				t.Errorf("unexpected inputID %q", inputID)
+			}
+			if limit != 20 || offset != 0 {
+				t.Errorf("unexpected pagination limit=%d offset=%d", limit, offset)
+			}
+			return want, nil
+		},
+	}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	svc := service.NewMessageService(repo, queue, nil, nil)
+
+	got, err := svc.ListByInput(context.Background(), "beszel", 20, 0)
+	if err != nil {
+		t.Fatalf("ListByInput() error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(got))
+	}
+}
+
+func TestMessageService_ListByInput_Empty(t *testing.T) {
+	repo := &mockRepo{
+		saveFn:        func(_ context.Context, _ domain.Message) error { return nil },
+		findByInputFn: func(_ string, _, _ int) ([]domain.Message, error) { return []domain.Message{}, nil },
+	}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	svc := service.NewMessageService(repo, queue, nil, nil)
+
+	got, err := svc.ListByInput(context.Background(), "beszel", 20, 0)
+	if err != nil {
+		t.Fatalf("ListByInput() error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("ListByInput() should return empty slice, not nil")
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected 0 messages, got %d", len(got))
+	}
+}
+
+func TestMessageService_Requeue_Success(t *testing.T) {
+	original := domain.Message{
+		ID:         "msg-1",
+		Input:      "beszel",
+		Status:     domain.MessageStatusFailed,
+		RetryCount: 3,
+	}
+	var updatedID string
+	var updatedStatus domain.MessageStatus
+	var updatedRetryCount int
+	var enqueuedMsg domain.Message
+
+	repo := &mockRepo{
+		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
+		findByIDFn: func(id string) (domain.Message, error) {
+			return original, nil
+		},
+		updateFn: func(_ context.Context, id string, s domain.MessageStatus, retry int, _ time.Time) error {
+			updatedID = id
+			updatedStatus = s
+			updatedRetryCount = retry
+			return nil
+		},
+	}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, m domain.Message) error {
+		enqueuedMsg = m
+		return nil
+	}}
+	svc := service.NewMessageService(repo, queue, nil, nil)
+
+	got, err := svc.Requeue(context.Background(), "msg-1")
+	if err != nil {
+		t.Fatalf("Requeue() error: %v", err)
+	}
+	if updatedID != "msg-1" {
+		t.Errorf("updated id = %q, want msg-1", updatedID)
+	}
+	if updatedStatus != domain.MessageStatusPending {
+		t.Errorf("updated status = %q, want PENDING", updatedStatus)
+	}
+	if updatedRetryCount != 0 {
+		t.Errorf("retry count should be reset to 0, got %d", updatedRetryCount)
+	}
+	if got.Status != domain.MessageStatusPending {
+		t.Errorf("returned status = %q, want PENDING", got.Status)
+	}
+	if got.RetryCount != 0 {
+		t.Errorf("returned retryCount = %d, want 0", got.RetryCount)
+	}
+	if enqueuedMsg.ID != "msg-1" {
+		t.Errorf("enqueued msg id = %q, want msg-1", enqueuedMsg.ID)
+	}
+}
+
+func TestMessageService_Requeue_NotFailed(t *testing.T) {
+	tests := []struct {
+		name   string
+		status domain.MessageStatus
+	}{
+		{"PENDING", domain.MessageStatusPending},
+		{"DELIVERED", domain.MessageStatusDelivered},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &mockRepo{
+				saveFn:     func(_ context.Context, _ domain.Message) error { return nil },
+				findByIDFn: func(_ string) (domain.Message, error) {
+					return domain.Message{ID: "msg-1", Status: tt.status}, nil
+				},
+			}
+			queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+			svc := service.NewMessageService(repo, queue, nil, nil)
+
+			_, err := svc.Requeue(context.Background(), "msg-1")
+			if !errors.Is(err, domain.ErrInvalidTransition) {
+				t.Errorf("expected ErrInvalidTransition for status %q, got %v", tt.status, err)
+			}
+		})
+	}
+}
+
+func TestMessageService_Requeue_NotFound(t *testing.T) {
+	repo := &mockRepo{
+		saveFn:     func(_ context.Context, _ domain.Message) error { return nil },
+		findByIDFn: func(_ string) (domain.Message, error) { return domain.Message{}, domain.ErrMessageNotFound },
+	}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	svc := service.NewMessageService(repo, queue, nil, nil)
+
+	_, err := svc.Requeue(context.Background(), "nonexistent")
 	if !errors.Is(err, domain.ErrMessageNotFound) {
 		t.Fatalf("expected ErrMessageNotFound, got %v", err)
 	}
