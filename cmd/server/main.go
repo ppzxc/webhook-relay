@@ -165,6 +165,15 @@ func runServer(cfgPath string) error {
 	}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry, workerCfg)
 
+	var rotWorker *service.StorageRotationWorker
+	if cfg.Storage.Rotation.Enabled {
+		rotCfg, err := buildStorageRotationConfig(cfg.Storage.Rotation)
+		if err != nil {
+			return fmt.Errorf("rotation config: %w", err)
+		}
+		rotWorker = service.NewStorageRotationWorker(repo, rotCfg)
+	}
+
 	// HTTP + WebSocket adapter assembly
 	resolver := newConfigInputResolver(cfg)
 	wsHandler := wsadapter.NewHandler(msgSvc)
@@ -174,6 +183,9 @@ func runServer(cfgPath string) error {
 	defer cancel()
 
 	worker.Start(ctx, cfg.Queue.WorkerCount)
+	if rotWorker != nil {
+		rotWorker.Start(ctx)
+	}
 
 	// TCP listeners (per InputConfig with Address set)
 	for _, inp := range cfg.Inputs {
@@ -218,7 +230,13 @@ func runServer(cfgPath string) error {
 	defer shutCancel()
 
 	waitDone := make(chan struct{})
-	go func() { worker.Wait(); close(waitDone) }()
+	go func() {
+		worker.Wait()
+		if rotWorker != nil {
+			rotWorker.Wait()
+		}
+		close(waitDone)
+	}()
 	select {
 	case <-waitDone:
 	case <-shutCtx.Done():
@@ -271,6 +289,26 @@ func parserToContentType(parserType string) string {
 		slog.Warn("unknown parser type for content-type mapping", "parser", parserType)
 		return "application/octet-stream"
 	}
+}
+
+func buildStorageRotationConfig(rc cfgpkg.RotationConfig) (service.StorageRotationConfig, error) {
+	retention, err := time.ParseDuration(rc.Retention)
+	if err != nil {
+		return service.StorageRotationConfig{}, fmt.Errorf("invalid rotation.retention %q: %w", rc.Retention, err)
+	}
+	interval, err := time.ParseDuration(rc.Interval)
+	if err != nil {
+		return service.StorageRotationConfig{}, fmt.Errorf("invalid rotation.interval %q: %w", rc.Interval, err)
+	}
+	statuses := make([]domain.MessageStatus, 0, len(rc.Statuses))
+	for _, s := range rc.Statuses {
+		statuses = append(statuses, domain.MessageStatus(s))
+	}
+	return service.StorageRotationConfig{
+		Retention: retention,
+		Interval:  interval,
+		Statuses:  statuses,
+	}, nil
 }
 
 func buildRelayWorkerConfig(wc cfgpkg.WorkerConfig) (service.RelayWorkerConfig, error) {
