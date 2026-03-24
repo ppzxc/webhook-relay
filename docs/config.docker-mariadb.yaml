@@ -1,0 +1,48 @@
+server:
+  port: 8080
+  readTimeout: 30s
+  writeTimeout: 30s
+  tls:
+    enabled: false
+    certFile: ""
+    keyFile: ""
+
+log:
+  level: INFO    # DEBUG, INFO, WARN, ERROR
+  format: JSON   # JSON, TEXT
+
+inputs:
+  - id: example
+    engine: CEL          # required — used for filter/mapping/routing; CEL or EXPR
+    parser: JSON         # JSON, FORM, XML, LOGFMT, REGEX
+    secret: "change-me"
+    rules:
+      - outputIds: [example-webhook]
+
+outputs:
+  - id: example-webhook
+    type: WEBHOOK
+    engine: CEL
+    url: "https://hooks.example.com/xyz"
+    template:
+      text: 'data.input + ": " + data.payload'
+    retryCount: 3
+    retryDelayMs: 1000
+    skipTLSVerify: false
+
+storage:
+  type: MARIADB
+  dsn: "user:pass@tcp(host:3306)/relaybox?parseTime=true"
+  maxOpenConns: 10
+  maxIdleConns: 5
+  connMaxLifetime: "5m"
+
+queue:
+  type: FILE
+  path: "/app/data/queue"
+  workerCount: 2
+
+worker:
+  defaultRetryCount: 3
+  defaultRetryDelay: "1s"
+  pollBackoff: "500ms"
