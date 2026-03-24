@@ -1,16 +1,15 @@
-package config_test
+package outputconfig_test
 
 import (
 	"context"
 	"testing"
 
+	outputconfig "relaybox/internal/adapter/output/config"
 	"relaybox/internal/config"
 )
 
 // TestInMemoryRuleConfigReader_GetRulesByInputID verifies that rules are indexed
 // by input ID regardless of any legacy type value.
-// RED: currently fails because Update() uses inp.Type ("BESZEL") as key,
-// so GetRules("beszel") returns ErrInputNotFound.
 func TestInMemoryRuleConfigReader_GetRulesByInputID(t *testing.T) {
 	cfg := &config.Config{
 		Inputs: []config.InputConfig{
@@ -25,7 +24,7 @@ func TestInMemoryRuleConfigReader_GetRulesByInputID(t *testing.T) {
 		},
 	}
 
-	r := config.NewInMemoryRuleConfigReader(cfg)
+	r := outputconfig.NewInMemoryRuleConfigReader(cfg)
 
 	// Must find rules by input ID "beszel"
 	engine, entries, err := r.GetRules(context.Background(), "beszel")
