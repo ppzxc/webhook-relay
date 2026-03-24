@@ -3,8 +3,10 @@ package webhook_test
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +14,19 @@ import (
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
 )
+
+// captureHandler is a minimal slog.Handler that invokes fn for each record.
+type captureHandler struct {
+	fn func(slog.Record)
+}
+
+func (h *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.fn(r)
+	return nil
+}
+func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 // compile-time interface check
 var _ output.OutputSender = (*webhook.Sender)(nil)
@@ -61,6 +76,67 @@ func TestSender_Send(t *testing.T) {
 	}
 	if string(received) != `{"text":"BESZEL"}` {
 		t.Errorf("body = %q", received)
+	}
+}
+
+func TestSender_LogsInfoOnSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	type logRecord struct {
+		level   slog.Level
+		msg     string
+		attribs map[string]any
+	}
+	var mu sync.Mutex
+	var records []logRecord
+
+	handler := &captureHandler{
+		fn: func(r slog.Record) {
+			attrs := make(map[string]any)
+			r.Attrs(func(a slog.Attr) bool {
+				attrs[a.Key] = a.Value.Any()
+				return true
+			})
+			mu.Lock()
+			records = append(records, logRecord{level: r.Level, msg: r.Message, attribs: attrs})
+			mu.Unlock()
+		},
+	}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(orig)
+
+	sender := webhook.NewSender()
+	out := domain.Output{ID: "test-output", URL: srv.URL}
+
+	if err := sender.Send(context.Background(), out, []byte(`{"test":true}`)); err != nil {
+		t.Fatalf("Send() error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	var found bool
+	for _, rec := range records {
+		if rec.level == slog.LevelInfo && rec.msg == "webhook sent" {
+			if _, ok := rec.attribs["output"]; !ok {
+				t.Error("log record missing key: output")
+			}
+			if _, ok := rec.attribs["statusCode"]; !ok {
+				t.Error("log record missing key: statusCode")
+			}
+			if _, ok := rec.attribs["elapsed"]; !ok {
+				t.Error("log record missing key: elapsed")
+			}
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error(`expected INFO "webhook sent" log record not found`)
 	}
 }
 

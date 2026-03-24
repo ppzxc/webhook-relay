@@ -77,6 +77,8 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 		defer w.cfg.Hooks.OnProcessed()
 	}
 
+	slog.Info("processing message", "messageID", msg.ID, "input", msg.Input)
+
 	inputEngine, entries, err := w.ruleReader.GetRules(ctx, msg.Input)
 	if err != nil {
 		_ = nack()
@@ -173,6 +175,7 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 				success = false
 				continue
 			}
+			slog.Debug("delivering to output", "messageID", msg.ID, "output", out.ID, "payloadSize", len(payload))
 			if err := w.deliver(ctx, out, payload); err != nil {
 				slog.Warn("delivery failed", "messageID", msg.ID, "output", out.ID, "err", err)
 				success = false
@@ -182,6 +185,7 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 
 	now := time.Now().UTC()
 	if success {
+		slog.Info("message delivered", "messageID", msg.ID, "input", msg.Input)
 		if msg.Status.CanTransitionTo(domain.MessageStatusDelivered) {
 			if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusDelivered, msg.RetryCount, now); err != nil {
 				slog.Error("failed to update delivery state to delivered", "messageID", msg.ID, "err", err)
@@ -193,6 +197,7 @@ func (w *RelayWorker) processOne(ctx context.Context) error {
 			slog.Warn("ack failed", "messageID", msg.ID, "err", err)
 		}
 	} else {
+		slog.Info("message failed", "messageID", msg.ID, "input", msg.Input, "retryCount", msg.RetryCount+1)
 		if msg.Status.CanTransitionTo(domain.MessageStatusFailed) {
 			if err := w.repo.UpdateDeliveryState(ctx, msg.ID, domain.MessageStatusFailed, msg.RetryCount+1, now); err != nil {
 				slog.Error("failed to update delivery state to failed", "messageID", msg.ID, "err", err)

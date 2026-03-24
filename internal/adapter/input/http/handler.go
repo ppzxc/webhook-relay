@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,11 +55,24 @@ func (h *Handler) PostMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	slog.Debug("request received",
+		"input", inputID,
+		"headers", r.Header,
+		"body", string(body),
+	)
+
 	messageID, err := h.receiveUC.Receive(r.Context(), resolvedInputID, r.Header.Get("Content-Type"), body)
 	if err != nil {
 		mapError(w, r, err)
 		return
 	}
+
+	slog.Info("message received",
+		"input", inputID,
+		"messageID", messageID,
+		"contentType", r.Header.Get("Content-Type"),
+		"payloadSize", len(body),
+	)
 
 	resp := map[string]any{
 		"id":        messageID,
