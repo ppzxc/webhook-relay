@@ -8,7 +8,6 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"relaybox/internal/adapter/output/mariadb/db"
 	output "relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
 )
@@ -26,8 +25,7 @@ type Config struct {
 
 // Repository implements port/output.MessageRepository for MariaDB.
 type Repository struct {
-	queries *db.Queries
-	sqlDB   *sql.DB
+	sqlDB *sql.DB
 }
 
 // New opens a MariaDB connection, applies connection pool settings, and creates the schema.
@@ -58,21 +56,21 @@ func New(cfg Config) (*Repository, error) {
 		sqlDB.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	return &Repository{queries: db.New(sqlDB), sqlDB: sqlDB}, nil
+	return &Repository{sqlDB: sqlDB}, nil
 }
 
 func (r *Repository) Close() error { return r.sqlDB.Close() }
 
 func (r *Repository) Save(ctx context.Context, m domain.Message) error {
-	err := r.queries.InsertMessage(ctx, db.InsertMessageParams{
-		ID:         m.ID,
-		Version:    int32(m.Version),
-		Input:      m.Input,
-		Payload:    []byte(m.Payload),
-		CreatedAt:  m.CreatedAt.UTC(),
-		Status:     string(m.Status),
-		RetryCount: int32(m.RetryCount),
-	})
+	_, err := r.sqlDB.ExecContext(ctx, sqlInsertMessage,
+		m.ID,
+		int32(m.Version),
+		m.Input,
+		[]byte(m.Payload),
+		m.CreatedAt.UTC(),
+		string(m.Status),
+		int32(m.RetryCount),
+	)
 	if err != nil {
 		return fmt.Errorf("save message: %w", err)
 	}
@@ -81,12 +79,12 @@ func (r *Repository) Save(ctx context.Context, m domain.Message) error {
 
 func (r *Repository) UpdateDeliveryState(ctx context.Context, id string, status domain.MessageStatus, retryCount int, lastAttemptAt time.Time) error {
 	t := lastAttemptAt.UTC()
-	err := r.queries.UpdateDeliveryState(ctx, db.UpdateDeliveryStateParams{
-		Status:        string(status),
-		RetryCount:    int32(retryCount),
-		LastAttemptAt: sql.NullTime{Time: t, Valid: true},
-		ID:            id,
-	})
+	_, err := r.sqlDB.ExecContext(ctx, sqlUpdateDeliveryState,
+		string(status),
+		int32(retryCount),
+		sql.NullTime{Time: t, Valid: true},
+		id,
+	)
 	if err != nil {
 		return fmt.Errorf("update delivery state: %w", err)
 	}
@@ -94,25 +92,31 @@ func (r *Repository) UpdateDeliveryState(ctx context.Context, id string, status 
 }
 
 func (r *Repository) FindByID(ctx context.Context, id string) (domain.Message, error) {
-	row, err := r.queries.GetMessageByID(ctx, id)
+	row := r.sqlDB.QueryRowContext(ctx, sqlGetMessageByID, id)
+	m, err := scanMessage(row)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("find message %q: %w", id, err)
 	}
-	return toMessage(row), nil
+	return m, nil
 }
 
 func (r *Repository) FindByInput(ctx context.Context, inputID string, limit, offset int) ([]domain.Message, error) {
-	rows, err := r.queries.ListMessagesByInput(ctx, db.ListMessagesByInputParams{
-		Input:  inputID,
-		Limit:  int32(limit),
-		Offset: int32(offset),
-	})
+	rows, err := r.sqlDB.QueryContext(ctx, sqlListMessagesByInput, inputID, int32(limit), int32(offset))
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
 	}
-	messages := make([]domain.Message, 0, len(rows))
-	for _, row := range rows {
-		messages = append(messages, toMessage(row))
+	defer rows.Close()
+
+	messages := make([]domain.Message, 0)
+	for rows.Next() {
+		m, err := scanMessageRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		messages = append(messages, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
 	}
 	return messages, nil
 }
@@ -146,21 +150,74 @@ func (r *Repository) DeleteOlderThan(ctx context.Context, cutoff time.Time, stat
 	return n, nil
 }
 
-func toMessage(row db.Message) domain.Message {
-	m := domain.Message{
-		ID:         row.ID,
-		Version:    int(row.Version),
-		Input:      row.Input,
-		Payload:    domain.RawPayload(row.Payload),
-		CreatedAt:  row.CreatedAt,
-		Status:     domain.MessageStatus(row.Status),
-		RetryCount: int(row.RetryCount),
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanMessage(row rowScanner) (domain.Message, error) {
+	var m domain.Message
+	var lastAttemptAt sql.NullTime
+	var createdAt time.Time
+	var status string
+	var version, retryCount int32
+	var payload []byte
+
+	err := row.Scan(
+		&m.ID,
+		&version,
+		&m.Input,
+		&payload,
+		&createdAt,
+		&status,
+		&retryCount,
+		&lastAttemptAt,
+	)
+	if err != nil {
+		return domain.Message{}, err
 	}
-	if row.LastAttemptAt.Valid {
-		t := row.LastAttemptAt.Time
+	m.Version = int(version)
+	m.Payload = domain.RawPayload(payload)
+	m.CreatedAt = createdAt
+	m.Status = domain.MessageStatus(status)
+	m.RetryCount = int(retryCount)
+	if lastAttemptAt.Valid {
+		t := lastAttemptAt.Time
 		m.LastAttemptAt = &t
 	}
-	return m
+	return m, nil
+}
+
+func scanMessageRow(rows *sql.Rows) (domain.Message, error) {
+	var m domain.Message
+	var lastAttemptAt sql.NullTime
+	var createdAt time.Time
+	var status string
+	var version, retryCount int32
+	var payload []byte
+
+	err := rows.Scan(
+		&m.ID,
+		&version,
+		&m.Input,
+		&payload,
+		&createdAt,
+		&status,
+		&retryCount,
+		&lastAttemptAt,
+	)
+	if err != nil {
+		return domain.Message{}, err
+	}
+	m.Version = int(version)
+	m.Payload = domain.RawPayload(payload)
+	m.CreatedAt = createdAt
+	m.Status = domain.MessageStatus(status)
+	m.RetryCount = int(retryCount)
+	if lastAttemptAt.Valid {
+		t := lastAttemptAt.Time
+		m.LastAttemptAt = &t
+	}
+	return m, nil
 }
 
 // ensureParseTime appends parseTime=true to the DSN if not already present.
@@ -174,6 +231,23 @@ func ensureParseTime(dsn string) string {
 	}
 	return dsn + "?parseTime=true"
 }
+
+const (
+	sqlInsertMessage = `
+INSERT INTO messages (id, version, input, payload, created_at, status, retry_count)
+VALUES (?, ?, ?, ?, ?, ?, ?)`
+
+	sqlGetMessageByID = `
+SELECT id, version, input, payload, created_at, status, retry_count, last_attempt_at
+FROM messages WHERE id=?`
+
+	sqlListMessagesByInput = `
+SELECT id, version, input, payload, created_at, status, retry_count, last_attempt_at
+FROM messages WHERE input=? ORDER BY created_at DESC LIMIT ? OFFSET ?`
+
+	sqlUpdateDeliveryState = `
+UPDATE messages SET status=?, retry_count=?, last_attempt_at=? WHERE id=?`
+)
 
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS messages (
