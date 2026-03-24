@@ -129,7 +129,11 @@ func runServer(cfgPath string) error {
 
 	// Application services
 	msgSvc := service.NewMessageService(repo, queue, parserTypes, parserRegistry)
-	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry, buildRelayWorkerConfig(cfg.Worker))
+	workerCfg, err := buildRelayWorkerConfig(cfg.Worker)
+	if err != nil {
+		return fmt.Errorf("worker config: %w", err)
+	}
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, exprRegistry, workerCfg)
 
 	// HTTP + WebSocket adapter assembly
 	resolver := newConfigInputResolver(cfg)
@@ -239,22 +243,19 @@ func parserToContentType(parserType string) string {
 	}
 }
 
-func buildRelayWorkerConfig(wc cfgpkg.WorkerConfig) service.RelayWorkerConfig {
-	def := service.DefaultRelayWorkerConfig()
+func buildRelayWorkerConfig(wc cfgpkg.WorkerConfig) (service.RelayWorkerConfig, error) {
 	cfg := service.RelayWorkerConfig{DefaultRetryCount: wc.DefaultRetryCount}
-	if d, err := time.ParseDuration(wc.DefaultRetryDelay); err == nil {
-		cfg.DefaultRetryDelay = d
-	} else {
-		slog.Warn("invalid worker.defaultRetryDelay, using default", "value", wc.DefaultRetryDelay, "err", err)
-		cfg.DefaultRetryDelay = def.DefaultRetryDelay
+	d, err := time.ParseDuration(wc.DefaultRetryDelay)
+	if err != nil {
+		return service.RelayWorkerConfig{}, fmt.Errorf("invalid worker.defaultRetryDelay %q: %w", wc.DefaultRetryDelay, err)
 	}
-	if d, err := time.ParseDuration(wc.PollBackoff); err == nil {
-		cfg.PollBackoff = d
-	} else {
-		slog.Warn("invalid worker.pollBackoff, using default", "value", wc.PollBackoff, "err", err)
-		cfg.PollBackoff = def.PollBackoff
+	cfg.DefaultRetryDelay = d
+	d, err = time.ParseDuration(wc.PollBackoff)
+	if err != nil {
+		return service.RelayWorkerConfig{}, fmt.Errorf("invalid worker.pollBackoff %q: %w", wc.PollBackoff, err)
 	}
-	return cfg
+	cfg.PollBackoff = d
+	return cfg, nil
 }
 
 func setupLogger(cfg *cfgpkg.Config) {

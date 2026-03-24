@@ -20,12 +20,10 @@ type Sender struct {
 }
 
 func NewSender() *Sender {
-	return &Sender{
-		transport: &http.Transport{},
-		insecureTransport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-		},
-	}
+	base := http.DefaultTransport.(*http.Transport).Clone()
+	insecure := http.DefaultTransport.(*http.Transport).Clone()
+	insecure.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
+	return &Sender{transport: base, insecureTransport: insecure}
 }
 
 func (s *Sender) Send(ctx context.Context, out domain.Output, payload []byte) error {

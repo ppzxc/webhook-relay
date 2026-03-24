@@ -20,7 +20,11 @@ const (
 )
 
 func inputTypeFromContext(ctx context.Context) domain.InputType {
-	return ctx.Value(inputTypeKey).(domain.InputType)
+	v, ok := ctx.Value(inputTypeKey).(domain.InputType)
+	if !ok {
+		panic("inputAuthMiddleware not applied: inputType missing from context")
+	}
+	return v
 }
 
 func inputAuthMiddleware(resolver input.InputResolver) func(http.Handler) http.Handler {
