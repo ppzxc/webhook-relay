@@ -38,10 +38,7 @@ func (r *InMemoryRuleConfigReader) Update(cfg *Config) {
 
 	inputs := make(map[string]inputEntry, len(cfg.Inputs))
 	for _, inp := range cfg.Inputs {
-		key := inp.Type // keyed by input type (e.g. "BESZEL")
-		if key == "" {
-			key = inp.ID // fallback
-		}
+		key := inp.ID
 
 		entries := make([]domain.RuleEntry, 0, len(inp.Rules))
 		for _, rc := range inp.Rules {

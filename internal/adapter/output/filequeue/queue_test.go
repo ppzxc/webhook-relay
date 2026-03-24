@@ -18,7 +18,7 @@ func TestQueue_EnqueueDequeueAck(t *testing.T) {
 	q, _ := filequeue.New(t.TempDir())
 	ctx := context.Background()
 
-	msg := domain.Message{ID: "q-001", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{"x":1}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "q-001", Input: "beszel", Payload: domain.RawPayload(`{"x":1}`), Status: domain.MessageStatusPending, Version: 1}
 	if err := q.Enqueue(ctx, msg); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestQueue_New_RecoverOrphans(t *testing.T) {
 	dir := t.TempDir()
 
 	// 크래시를 시뮬레이션: .json.processing 고아 파일을 직접 생성
-	msg := domain.Message{ID: "orphan-001", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "orphan-001", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	tmp, _ := filequeue.New(dir)
 	ctx := context.Background()
 	tmp.Enqueue(ctx, msg)
@@ -79,7 +79,7 @@ func TestQueue_Nack_Requeues(t *testing.T) {
 	q, _ := filequeue.New(t.TempDir())
 	ctx := context.Background()
 
-	msg := domain.Message{ID: "q-002", Input: domain.InputTypeDozzle, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "q-002", Input: "dozzle", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	q.Enqueue(ctx, msg)
 
 	_, _, nack, _ := q.Dequeue(ctx)

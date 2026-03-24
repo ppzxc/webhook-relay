@@ -66,7 +66,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 
 	cfg := &cfgpkg.Config{
 		Inputs: []cfgpkg.InputConfig{{
-			ID: "beszel", Type: "BESZEL", Engine: "CEL", Secret: "tok",
+			ID: "beszel", Engine: "CEL", Secret: "tok",
 			Rules: []cfgpkg.RuleConfig{{OutputIDs: []string{"ch1"}}},
 		}},
 		Outputs: []cfgpkg.OutputConfig{{
@@ -91,7 +91,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
 
 	resolver := &configInputResolver{
-		inputs:  map[string]string{"beszel": domain.InputTypeBeszel},
+		inputs:  map[string]string{"beszel": "beszel"},
 		secrets: map[string]string{"beszel": "tok"},
 	}
 	router := httpadapter.NewRouter(msgSvc, msgSvc, resolver, nil)
@@ -147,13 +147,13 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	if len(got) == 0 {
 		t.Error("relay worker did not deliver the message")
 	}
-	// Template is {"src": input} which evaluates to {"src":"BESZEL"}
+	// Template is {"src": data.input} which evaluates to {"src":"beszel"} (input ID)
 	var result map[string]any
 	if err := json.Unmarshal(got, &result); err != nil {
 		t.Fatalf("unmarshal delivered payload: %v", err)
 	}
-	if result["src"] != string(domain.InputTypeBeszel) {
-		t.Errorf("delivered src = %v, want %s", result["src"], domain.InputTypeBeszel)
+	if result["src"] != "beszel" {
+		t.Errorf("delivered src = %v, want beszel", result["src"])
 	}
 }
 

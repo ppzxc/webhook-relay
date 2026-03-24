@@ -99,7 +99,7 @@ func waitForProcessed(t *testing.T, ch <-chan struct{}) {
 }
 
 func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
-	msg := domain.Message{ID: "w-err", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "w-err", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{
 		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
@@ -134,7 +134,7 @@ func TestRelayWorker_UpdateDeliveryState_ErrorDoesNotBreakWorker(t *testing.T) {
 }
 
 func TestRelayWorker_DeliverSuccess(t *testing.T) {
-	msg := domain.Message{ID: "w1", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{"host":"server1"}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "w1", Input: "beszel", Payload: domain.RawPayload(`{"host":"server1"}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
@@ -170,7 +170,7 @@ func (m *mockRuleReaderWithError) GetRules(_ context.Context, _ string) (string,
 }
 
 func TestRelayWorker_NoRule_Nacks(t *testing.T) {
-	msg := domain.Message{ID: "no-rule", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "no-rule", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	var nackCalled atomic.Bool
 	queue := &mockMessageQueueWithNack{msg: msg, nackFn: func() error { nackCalled.Store(true); return nil }}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
@@ -215,7 +215,7 @@ func (m *mockSenderError) Send(_ context.Context, _ domain.Output, _ []byte) err
 }
 
 func TestRelayWorker_SendError_MarksAsFailed(t *testing.T) {
-	msg := domain.Message{ID: "send-err", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "send-err", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	var nackCalled atomic.Bool
 	queue := &mockMessageQueueWithNack{msg: msg, nackFn: func() error { nackCalled.Store(true); return nil }}
 
@@ -289,14 +289,14 @@ func TestRelayWorker_GracefulShutdown(t *testing.T) {
 // --- New expression engine tests ---
 
 func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
-	msg := domain.Message{ID: "f-true", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "f-true", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
 	ruleReader := &mockRuleReader{
 		engine: "CEL",
 		entries: []domain.RuleEntry{{
-			Rule:    domain.Rule{Filter: `data.input == "BESZEL"`},
+			Rule:    domain.Rule{Filter: `data.input == "beszel"`},
 			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
 		}},
 	}
@@ -319,7 +319,7 @@ func TestRelayWorker_FilterTrue_Passes(t *testing.T) {
 }
 
 func TestRelayWorker_FilterFalse_Skips(t *testing.T) {
-	msg := domain.Message{ID: "f-false", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "f-false", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	var ackCalled atomic.Bool
 	queue := &mockMessageQueueWithAckNack{
 		msg:    msg,
@@ -373,7 +373,7 @@ func (m *mockMessageQueueWithAckNack) Dequeue(_ context.Context) (domain.Message
 }
 
 func TestRelayWorker_EmptyFilter_PassesAll(t *testing.T) {
-	msg := domain.Message{ID: "no-filter", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "no-filter", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
@@ -403,7 +403,7 @@ func TestRelayWorker_EmptyFilter_PassesAll(t *testing.T) {
 }
 
 func TestRelayWorker_EmptyRouting_AllOutputs(t *testing.T) {
-	msg := domain.Message{ID: "all-out", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "all-out", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
@@ -436,7 +436,7 @@ func TestRelayWorker_EmptyRouting_AllOutputs(t *testing.T) {
 }
 
 func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
-	msg := domain.Message{ID: "route-msg", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "route-msg", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
@@ -445,7 +445,7 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 		entries: []domain.RuleEntry{{
 			Rule: domain.Rule{
 				Routing: []domain.RouteCondition{
-					{Condition: `data.input == "BESZEL"`, OutputIDs: []string{"c1"}},
+					{Condition: `data.input == "beszel"`, OutputIDs: []string{"c1"}},
 					{Condition: `data.input == "DOZZLE"`, OutputIDs: []string{"c2"}},
 				},
 			},
@@ -475,7 +475,7 @@ func TestRelayWorker_Routing_MatchesCorrectOutputs(t *testing.T) {
 
 func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 	msg := domain.Message{
-		ID: "tmpl-msg", Input: domain.InputTypeBeszel,
+		ID: "tmpl-msg", Input: "beszel",
 		Payload: domain.RawPayload(`{"host":"server1"}`),
 		Status:  domain.MessageStatusPending, Version: 1,
 	}
@@ -520,17 +520,17 @@ func TestRelayWorker_TemplateExpressions_BuildPayload(t *testing.T) {
 	if err := json.Unmarshal(payload, &result); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
-	if result["src"] != "BESZEL" {
-		t.Errorf("src = %v, want BESZEL", result["src"])
+	if result["src"] != "beszel" {
+		t.Errorf("src = %v, want beszel", result["src"])
 	}
-	if result["msg"] != "alert from BESZEL" {
-		t.Errorf("msg = %v, want 'alert from BESZEL'", result["msg"])
+	if result["msg"] != "alert from beszel" {
+		t.Errorf("msg = %v, want 'alert from beszel'", result["msg"])
 	}
 }
 
 func TestRelayWorker_NoTemplate_UsesRawPayload(t *testing.T) {
 	msg := domain.Message{
-		ID: "raw-msg", Input: domain.InputTypeBeszel,
+		ID: "raw-msg", Input: "beszel",
 		Payload: domain.RawPayload(`{"host":"server1"}`),
 		Status:  domain.MessageStatusPending, Version: 1,
 	}
@@ -572,7 +572,7 @@ func TestRelayWorker_NoTemplate_UsesRawPayload(t *testing.T) {
 
 func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	msg := domain.Message{
-		ID: "map-msg", Input: domain.InputTypeBeszel,
+		ID: "map-msg", Input: "beszel",
 		Payload: domain.RawPayload(`{}`),
 		Status:  domain.MessageStatusPending, Version: 1,
 	}
@@ -620,8 +620,8 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	if err := json.Unmarshal(payload, &result); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if result["tag"] != "[BESZEL]" {
-		t.Errorf("tag = %v, want [BESZEL]", result["tag"])
+	if result["tag"] != "[beszel]" {
+		t.Errorf("tag = %v, want [beszel]", result["tag"])
 	}
 }
 
@@ -642,7 +642,7 @@ func (m *mockRegistryCountingError) Get(_ domain.OutputType) (output.OutputSende
 }
 
 func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
-	msg := domain.Message{ID: "retry-custom", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "retry-custom", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockCountingSenderError{}
@@ -670,7 +670,7 @@ func TestRelayWorker_CustomRetryDefaults(t *testing.T) {
 }
 
 func TestRelayWorker_ZeroConfig_UsesDefaults(t *testing.T) {
-	msg := domain.Message{ID: "zero-cfg", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "zero-cfg", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}
@@ -697,7 +697,7 @@ func TestRelayWorker_ZeroConfig_UsesDefaults(t *testing.T) {
 }
 
 func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
-	msg := domain.Message{ID: "per-out", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "per-out", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockCountingSenderError{}
@@ -728,7 +728,7 @@ func TestRelayWorker_PerOutputRetry_OverridesDefault(t *testing.T) {
 func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
 	// DELIVERED→DELIVERED is an invalid transition; UpdateDeliveryState must NOT be called.
 	msg := domain.Message{
-		ID: "already-delivered", Input: domain.InputTypeBeszel,
+		ID: "already-delivered", Input: "beszel",
 		Payload: domain.RawPayload(`{}`),
 		Status:  domain.MessageStatusDelivered, // already terminal
 		Version: 1,
@@ -779,12 +779,12 @@ func TestRelayWorker_InvalidTransition_SkipsUpdate(t *testing.T) {
 func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 	msg := domain.Message{
 		ID:      "key-collision",
-		Input:   domain.InputTypeBeszel,
+		Input:   "beszel",
 		Payload: domain.RawPayload(`{}`),
 		Status:  domain.MessageStatusPending,
 		Version: 1,
 		ParsedData: map[string]any{
-			"input": "HACKED", // must NOT overwrite builtin "input" = "BESZEL"
+			"input": "HACKED", // must NOT overwrite builtin "input" = "beszel"
 		},
 	}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
@@ -793,7 +793,7 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 	ruleReader := &mockRuleReader{
 		engine: "CEL",
 		entries: []domain.RuleEntry{{
-			Rule:    domain.Rule{Filter: `data.input == "BESZEL"`},
+			Rule:    domain.Rule{Filter: `data.input == "beszel"`},
 			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
 		}},
 	}
@@ -818,7 +818,7 @@ func TestRelayWorker_ParsedDataDoesNotOverrideBuiltinKeys(t *testing.T) {
 func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	msg := domain.Message{
 		ID:      "nested-tmpl",
-		Input:   domain.InputTypeBeszel,
+		Input:   "beszel",
 		Payload: domain.RawPayload(`{"host":"server1"}`),
 		Status:  domain.MessageStatusPending,
 		Version: 1,
@@ -873,7 +873,7 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 	if content["type"] != "text" {
 		t.Errorf("content.type = %q, want %q", content["type"], "text")
 	}
-	wantPrefix := "BESZEL alert: "
+	wantPrefix := "beszel alert: "
 	text, _ := content["text"].(string)
 	if len(text) == 0 || text[:len(wantPrefix)] != wantPrefix {
 		t.Errorf("content.text = %q, want prefix %q", text, wantPrefix)
@@ -881,7 +881,7 @@ func TestRelayWorker_NestedTemplateKeys(t *testing.T) {
 }
 
 func TestRelayWorker_MultipleRuleEntries_EachProcessedIndependently(t *testing.T) {
-	msg := domain.Message{ID: "multi-rule", Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	msg := domain.Message{ID: "multi-rule", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
 	queue := &mockMessageQueue{messages: []domain.Message{msg}}
 	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	sender := &mockSender{}

@@ -30,7 +30,7 @@ func TestRepository_SaveAndFindByID(t *testing.T) {
 	ctx := context.Background()
 
 	msg := domain.Message{
-		ID: "test-001", Version: 1, Input: domain.InputTypeBeszel,
+		ID: "test-001", Version: 1, Input: "beszel",
 		Payload:   domain.RawPayload(`{"host":"srv1"}`),
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 		Status:    domain.MessageStatusPending,
@@ -50,7 +50,7 @@ func TestRepository_SaveAndFindByID(t *testing.T) {
 func TestRepository_UpdateDeliveryState(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
-	msg := domain.Message{ID: "test-002", Version: 1, Input: domain.InputTypeDozzle, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending}
+	msg := domain.Message{ID: "test-002", Version: 1, Input: "dozzle", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending}
 	repo.Save(ctx, msg)
 
 	now := time.Now().UTC()
@@ -67,9 +67,9 @@ func TestRepository_FindByInput(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()
 	for _, id := range []string{"a1", "a2", "a3"} {
-		repo.Save(ctx, domain.Message{ID: id, Input: domain.InputTypeBeszel, Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1})
+		repo.Save(ctx, domain.Message{ID: id, Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1})
 	}
-	messages, err := repo.FindByInput(ctx, string(domain.InputTypeBeszel), 10, 0)
+	messages, err := repo.FindByInput(ctx, string("beszel"), 10, 0)
 	if err != nil {
 		t.Fatalf("FindByInput() error: %v", err)
 	}

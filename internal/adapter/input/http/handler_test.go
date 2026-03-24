@@ -52,7 +52,7 @@ func newTestRouter(receiveFn func(context.Context, string, string, []byte) (stri
 	uc := &mockUseCase{receiveFn: receiveFn}
 	getUC := &mockGetUseCase{getByIDFn: getByIDFn}
 	resolver := &mockResolver{
-		inputs:  map[string]string{"beszel": domain.InputTypeBeszel},
+		inputs:  map[string]string{"beszel": "beszel"},
 		secrets: map[string]string{"beszel": "test-token"},
 	}
 	return httpadapter.NewRouter(uc, getUC, resolver, nil)
@@ -134,7 +134,7 @@ func TestHandler_PostMessage_EmptyToken(t *testing.T) {
 	uc := &mockUseCase{receiveFn: func(_ context.Context, _ string, _ string, _ []byte) (string, error) {
 		return "id", nil
 	}}
-	resolver := &allowAllResolver{inputs: map[string]string{"beszel": domain.InputTypeBeszel}}
+	resolver := &allowAllResolver{inputs: map[string]string{"beszel": "beszel"}}
 	router := httpadapter.NewRouter(uc, &mockGetUseCase{}, resolver, nil)
 
 	tests := []struct {
@@ -259,7 +259,7 @@ func TestDocs_AsyncAPI(t *testing.T) {
 func TestHandler_GetMessage_Success(t *testing.T) {
 	want := domain.Message{
 		ID:     "msg-1",
-		Input:  domain.InputTypeBeszel,
+		Input:  "beszel",
 		Status: domain.MessageStatusPending,
 	}
 	router := newTestRouter(

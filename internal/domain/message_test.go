@@ -69,7 +69,7 @@ func TestMessage_JSON_RoundTrip(t *testing.T) {
 	a := domain.Message{
 		ID:        "01J...",
 		Version:   1,
-		Input:     domain.InputTypeBeszel,
+		Input:     "beszel",
 		Payload:   domain.RawPayload(`{"host":"server1"}`),
 		CreatedAt: now,
 		Status:    domain.MessageStatusPending,

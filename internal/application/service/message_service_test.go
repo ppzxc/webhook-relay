@@ -73,14 +73,14 @@ func TestMessageService_Receive_Success(t *testing.T) {
 	queue := &mockQueue{enqueueFn: func(_ context.Context, a domain.Message) error { enqueued = a; return nil }}
 
 	svc := service.NewMessageService(repo, queue, nil, nil)
-	id, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1"}`))
+	id, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`{"host":"srv1"}`))
 	if err != nil {
 		t.Fatalf("Receive() error: %v", err)
 	}
 	if id == "" {
 		t.Error("returned ID should not be empty")
 	}
-	if saved.Input != domain.InputTypeBeszel {
+	if saved.Input != "beszel" {
 		t.Errorf("input = %q, want BESZEL", saved.Input)
 	}
 	if saved.Status != domain.MessageStatusPending {
@@ -99,7 +99,7 @@ func TestMessageService_Receive_SaveError(t *testing.T) {
 	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
 
 	svc := service.NewMessageService(repo, queue, nil, nil)
-	if _, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{}`)); err == nil {
+	if _, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`{}`)); err == nil {
 		t.Fatal("expected error")
 	}
 }
@@ -119,11 +119,11 @@ func TestMessageService_Receive_WithParser(t *testing.T) {
 	}
 
 	parserTypes := map[string]string{
-		domain.InputTypeBeszel: "JSON",
+		"beszel": "JSON",
 	}
 
 	svc := service.NewMessageService(repo, queue, parserTypes, registry)
-	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1","port":8080}`))
+	_, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`{"host":"srv1","port":8080}`))
 	if err != nil {
 		t.Fatalf("Receive() error: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestMessageService_Receive_WithoutParser(t *testing.T) {
 	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
 
 	svc := service.NewMessageService(repo, queue, nil, nil)
-	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`{"host":"srv1"}`))
+	_, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`{"host":"srv1"}`))
 	if err != nil {
 		t.Fatalf("Receive() error: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestMessageService_Receive_WithoutParser(t *testing.T) {
 func TestMessageService_GetByID_Success(t *testing.T) {
 	want := domain.Message{
 		ID:     "msg-1",
-		Input:  domain.InputTypeBeszel,
+		Input:  "beszel",
 		Status: domain.MessageStatusPending,
 	}
 	var receivedID string
@@ -213,11 +213,11 @@ func TestMessageService_Receive_ParserFailsGracefully(t *testing.T) {
 	}
 
 	parserTypes := map[string]string{
-		domain.InputTypeBeszel: "JSON",
+		"beszel": "JSON",
 	}
 
 	svc := service.NewMessageService(repo, queue, parserTypes, registry)
-	_, err := svc.Receive(context.Background(), domain.InputTypeBeszel, "application/json", []byte(`not-json`))
+	_, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`not-json`))
 	if err != nil {
 		t.Fatalf("Receive() should succeed even when parser fails, got: %v", err)
 	}

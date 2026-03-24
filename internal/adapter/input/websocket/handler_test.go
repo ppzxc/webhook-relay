@@ -10,7 +10,6 @@ import (
 
 	gws "github.com/gorilla/websocket"
 	wsadapter "relaybox/internal/adapter/input/websocket"
-	"relaybox/internal/domain"
 )
 
 type mockUseCase struct{ count atomic.Int32 }
@@ -25,7 +24,7 @@ func TestWebSocketHandler_ReceiveMessage(t *testing.T) {
 	handler := wsadapter.NewHandler(uc)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeWS(w, r, domain.InputTypeBeszel)
+		handler.ServeWS(w, r, "beszel")
 	}))
 	defer srv.Close()
 
@@ -47,7 +46,7 @@ func TestWebSocketHandler_CrossOriginRejected(t *testing.T) {
 	handler := wsadapter.NewHandler(uc)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		handler.ServeWS(w, r, domain.InputTypeBeszel)
+		handler.ServeWS(w, r, "beszel")
 	}))
 	defer srv.Close()
 

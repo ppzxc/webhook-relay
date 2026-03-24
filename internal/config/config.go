@@ -29,7 +29,6 @@ type LogConfig struct {
 
 type InputConfig struct {
 	ID        string       `mapstructure:"id"`
-	Type      string       `mapstructure:"type"`
 	Engine    string       `mapstructure:"engine"`   // "CEL" or "EXPR"; required
 	Parser    string       `mapstructure:"parser"`   // "JSON", "FORM", "XML", "LOGFMT", "REGEX"
 	Secret    string       `mapstructure:"secret"`
