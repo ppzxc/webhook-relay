@@ -16,7 +16,7 @@ import (
 type mockRepo struct {
 	saveFn      func(context.Context, domain.Message) error
 	updateFn    func(context.Context, string, domain.MessageStatus, int, time.Time) error
-	findByIDFn  func() (domain.Message, error)
+	findByIDFn  func(string) (domain.Message, error)
 }
 
 func (m *mockRepo) Save(ctx context.Context, a domain.Message) error { return m.saveFn(ctx, a) }
@@ -26,9 +26,9 @@ func (m *mockRepo) UpdateDeliveryState(ctx context.Context, id string, s domain.
 	}
 	return nil
 }
-func (m *mockRepo) FindByID(_ context.Context, _ string) (domain.Message, error) {
+func (m *mockRepo) FindByID(_ context.Context, id string) (domain.Message, error) {
 	if m.findByIDFn != nil {
-		return m.findByIDFn()
+		return m.findByIDFn(id)
 	}
 	return domain.Message{}, nil
 }
@@ -158,9 +158,13 @@ func TestMessageService_GetByID_Success(t *testing.T) {
 		Input:  domain.InputTypeBeszel,
 		Status: domain.MessageStatusPending,
 	}
+	var receivedID string
 	repo := &mockRepo{
-		saveFn:     func(_ context.Context, _ domain.Message) error { return nil },
-		findByIDFn: func() (domain.Message, error) { return want, nil },
+		saveFn: func(_ context.Context, _ domain.Message) error { return nil },
+		findByIDFn: func(id string) (domain.Message, error) {
+			receivedID = id
+			return want, nil
+		},
 	}
 	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	svc := service.NewMessageService(repo, queue, nil, nil)
@@ -168,6 +172,9 @@ func TestMessageService_GetByID_Success(t *testing.T) {
 	got, err := svc.GetByID(context.Background(), "msg-1")
 	if err != nil {
 		t.Fatalf("GetByID() error: %v", err)
+	}
+	if receivedID != "msg-1" {
+		t.Errorf("repo received id = %q, want %q", receivedID, "msg-1")
 	}
 	if got.ID != want.ID {
 		t.Errorf("ID = %q, want %q", got.ID, want.ID)
@@ -180,7 +187,7 @@ func TestMessageService_GetByID_Success(t *testing.T) {
 func TestMessageService_GetByID_NotFound(t *testing.T) {
 	repo := &mockRepo{
 		saveFn:     func(_ context.Context, _ domain.Message) error { return nil },
-		findByIDFn: func() (domain.Message, error) { return domain.Message{}, domain.ErrMessageNotFound },
+		findByIDFn: func(_ string) (domain.Message, error) { return domain.Message{}, domain.ErrMessageNotFound },
 	}
 	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
 	svc := service.NewMessageService(repo, queue, nil, nil)

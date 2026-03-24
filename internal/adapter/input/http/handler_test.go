@@ -135,7 +135,7 @@ func TestHandler_PostMessage_EmptyToken(t *testing.T) {
 		return "id", nil
 	}}
 	resolver := &allowAllResolver{inputs: map[string]domain.InputType{"beszel": domain.InputTypeBeszel}}
-	router := httpadapter.NewRouter(uc, nil, resolver, nil)
+	router := httpadapter.NewRouter(uc, &mockGetUseCase{}, resolver, nil)
 
 	tests := []struct {
 		name string

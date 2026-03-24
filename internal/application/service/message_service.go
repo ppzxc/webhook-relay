@@ -14,6 +14,7 @@ import (
 )
 
 // Compile-time interface checks
+var _ input.ReceiveMessageUseCase = (*MessageService)(nil)
 var _ input.GetMessageUseCase = (*MessageService)(nil)
 
 type MessageService struct {

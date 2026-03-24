@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"relaybox/internal/config"
@@ -282,6 +283,9 @@ queue:
 	if err == nil {
 		t.Fatal("expected error for invalid input engine")
 	}
+	if !strings.Contains(err.Error(), "unsupported engine") {
+		t.Errorf("error should mention unsupported engine, got: %v", err)
+	}
 }
 
 func TestLoad_InvalidOutputEngine(t *testing.T) {
@@ -306,6 +310,9 @@ queue:
 	_, err := config.Load(writeConfig(t, yaml))
 	if err == nil {
 		t.Fatal("expected error for invalid output engine")
+	}
+	if !strings.Contains(err.Error(), "unsupported engine") {
+		t.Errorf("error should mention unsupported engine, got: %v", err)
 	}
 }
 
