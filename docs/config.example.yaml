@@ -71,6 +71,7 @@ outputs:
 storage:
   type: SQLITE
   path: "./data/relaybox.db"
+  tableName: messages       # 메시지 테이블 이름 (기본값: messages)
 
 queue:
   type: FILE

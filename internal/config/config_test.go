@@ -489,3 +489,37 @@ storage:
 		t.Errorf("error should mention rotation.interval, got: %v", err)
 	}
 }
+
+func TestValidateConfig_TableName(t *testing.T) {
+	tests := []struct {
+		name      string
+		tableName string
+		wantErr   bool
+	}{
+		{"default messages", "messages", false},
+		{"with underscore", "relay_messages", false},
+		{"with number suffix", "my_table_1", false},
+		{"starts with underscore", "_table", false},
+		{"starts with number", "1table", true},
+		{"contains space", "my table", true},
+		{"sql injection", "messages; DROP TABLE messages;--", true},
+		{"too long 65 chars", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", true}, // 65자
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			yaml := rotationBaseYAML + `
+storage:
+  type: SQLITE
+  path: ./data/test.db
+  tableName: ` + tc.tableName + `
+`
+			_, err := config.Load(writeConfig(t, yaml))
+			if tc.wantErr && err == nil {
+				t.Errorf("expected error for tableName=%q, got nil", tc.tableName)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("unexpected error for tableName=%q: %v", tc.tableName, err)
+			}
+		})
+	}
+}

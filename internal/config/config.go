@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"regexp"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ type StorageConfig struct {
 	MaxOpenConns    int            `mapstructure:"maxOpenConns"`
 	MaxIdleConns    int            `mapstructure:"maxIdleConns"`
 	ConnMaxLifetime string         `mapstructure:"connMaxLifetime"` // Go duration, e.g. "5m"
+	TableName       string         `mapstructure:"tableName"`       // 메시지 테이블 이름 (기본값: messages)
 	Rotation        RotationConfig `mapstructure:"rotation"`
 }
 
@@ -152,6 +154,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("worker.defaultRetryCount", 3)
 	v.SetDefault("worker.defaultRetryDelay", "1s")
 	v.SetDefault("worker.pollBackoff", "500ms")
+	v.SetDefault("storage.tableName", "messages")
 	v.SetDefault("storage.rotation.enabled", false)
 	v.SetDefault("storage.rotation.retention", "720h")
 	v.SetDefault("storage.rotation.interval", "1h")
@@ -169,10 +172,14 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 }
 
 var validEngines = map[string]struct{}{"CEL": {}, "EXPR": {}}
+var validTableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
 
 func validateConfig(cfg *Config) error {
 	if strings.ToUpper(cfg.Storage.Type) == "MARIADB" && cfg.Storage.DSN == "" {
 		return fmt.Errorf("storage.dsn is required when storage.type is MARIADB")
+	}
+	if cfg.Storage.TableName != "" && !validTableName.MatchString(cfg.Storage.TableName) {
+		return fmt.Errorf("storage.tableName: invalid name %q (must match ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$)", cfg.Storage.TableName)
 	}
 	if cfg.Storage.ConnMaxLifetime != "" {
 		if _, err := time.ParseDuration(cfg.Storage.ConnMaxLifetime); err != nil {
