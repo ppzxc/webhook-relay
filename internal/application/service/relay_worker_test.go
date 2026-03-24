@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +15,19 @@ import (
 	"relaybox/internal/application/service"
 	"relaybox/internal/domain"
 )
+
+// workerCaptureHandler is a minimal slog.Handler that invokes fn for each record.
+type workerCaptureHandler struct {
+	fn func(slog.Record)
+}
+
+func (h *workerCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (h *workerCaptureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.fn(r)
+	return nil
+}
+func (h *workerCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
+func (h *workerCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 type mockMessageQueue struct {
 	messages []domain.Message
@@ -622,6 +636,80 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 	}
 	if result["tag"] != "[beszel]" {
 		t.Errorf("tag = %v, want [beszel]", result["tag"])
+	}
+}
+
+func TestRelayWorker_LogsInfoOnProcessing(t *testing.T) {
+	type logRecord struct {
+		level   slog.Level
+		msg     string
+		attribs map[string]any
+	}
+	var mu sync.Mutex
+	var records []logRecord
+
+	handler := &workerCaptureHandler{
+		fn: func(r slog.Record) {
+			attrs := make(map[string]any)
+			r.Attrs(func(a slog.Attr) bool {
+				attrs[a.Key] = a.Value.Any()
+				return true
+			})
+			mu.Lock()
+			records = append(records, logRecord{level: r.Level, msg: r.Message, attribs: attrs})
+			mu.Unlock()
+		},
+	}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(orig)
+
+	msgObj := domain.Message{
+		ID: "log-test", Input: "beszel",
+		Payload: domain.RawPayload(`{"host":"server1"}`),
+		Status:  domain.MessageStatusPending, Version: 1,
+	}
+	queue := &mockMessageQueue{messages: []domain.Message{msgObj}}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.Hooks.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	hasProcessingLog := false
+	hasDeliveredLog := false
+	for _, rec := range records {
+		if rec.level == slog.LevelInfo && rec.msg == "processing message" {
+			hasProcessingLog = true
+		}
+		if rec.level == slog.LevelInfo && rec.msg == "message delivered" {
+			hasDeliveredLog = true
+		}
+	}
+	if !hasProcessingLog {
+		t.Error(`expected INFO "processing message" log record not found`)
+	}
+	if !hasDeliveredLog {
+		t.Error(`expected INFO "message delivered" log record not found`)
 	}
 }
 
