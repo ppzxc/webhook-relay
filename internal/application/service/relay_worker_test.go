@@ -14,20 +14,8 @@ import (
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/application/service"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
-
-// workerCaptureHandler is a minimal slog.Handler that invokes fn for each record.
-type workerCaptureHandler struct {
-	fn func(slog.Record)
-}
-
-func (h *workerCaptureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
-func (h *workerCaptureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.fn(r)
-	return nil
-}
-func (h *workerCaptureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
-func (h *workerCaptureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 type mockMessageQueue struct {
 	messages []domain.Message
@@ -640,28 +628,9 @@ func TestRelayWorker_Mapping_EnrichesData(t *testing.T) {
 }
 
 func TestRelayWorker_LogsInfoOnProcessing(t *testing.T) {
-	type logRecord struct {
-		level   slog.Level
-		msg     string
-		attribs map[string]any
-	}
-	var mu sync.Mutex
-	var records []logRecord
-
-	handler := &workerCaptureHandler{
-		fn: func(r slog.Record) {
-			attrs := make(map[string]any)
-			r.Attrs(func(a slog.Attr) bool {
-				attrs[a.Key] = a.Value.Any()
-				return true
-			})
-			mu.Lock()
-			records = append(records, logRecord{level: r.Level, msg: r.Message, attribs: attrs})
-			mu.Unlock()
-		},
-	}
+	h := &testutil.CaptureHandler{}
 	orig := slog.Default()
-	slog.SetDefault(slog.New(handler))
+	slog.SetDefault(slog.New(h))
 	defer slog.SetDefault(orig)
 
 	msgObj := domain.Message{
@@ -692,16 +661,13 @@ func TestRelayWorker_LogsInfoOnProcessing(t *testing.T) {
 	worker.Start(ctx, 1)
 	waitForProcessed(t, processed)
 
-	mu.Lock()
-	defer mu.Unlock()
-
 	hasProcessingLog := false
 	hasDeliveredLog := false
-	for _, rec := range records {
-		if rec.level == slog.LevelInfo && rec.msg == "processing message" {
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "processing message" {
 			hasProcessingLog = true
 		}
-		if rec.level == slog.LevelInfo && rec.msg == "message delivered" {
+		if rec.Level == slog.LevelInfo && rec.Msg == "message delivered" {
 			hasDeliveredLog = true
 		}
 	}

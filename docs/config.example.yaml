@@ -9,6 +9,8 @@ server:
 
 log:
   level: INFO    # DEBUG, INFO, WARN, ERROR
+                 # 주의: DEBUG 레벨은 요청 헤더(Authorization 포함) 및 전체 바디를 로그에 기록합니다.
+                 #       운영 환경에서는 INFO 이상을 권장합니다.
   format: JSON   # JSON, TEXT
 
 inputs:

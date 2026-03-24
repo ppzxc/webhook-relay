@@ -6,27 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
 	"relaybox/internal/adapter/output/webhook"
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
-
-// captureHandler is a minimal slog.Handler that invokes fn for each record.
-type captureHandler struct {
-	fn func(slog.Record)
-}
-
-func (h *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.fn(r)
-	return nil
-}
-func (h *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(_ string) slog.Handler      { return h }
 
 // compile-time interface check
 var _ output.OutputSender = (*webhook.Sender)(nil)
@@ -85,28 +72,9 @@ func TestSender_LogsInfoOnSuccess(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	type logRecord struct {
-		level   slog.Level
-		msg     string
-		attribs map[string]any
-	}
-	var mu sync.Mutex
-	var records []logRecord
-
-	handler := &captureHandler{
-		fn: func(r slog.Record) {
-			attrs := make(map[string]any)
-			r.Attrs(func(a slog.Attr) bool {
-				attrs[a.Key] = a.Value.Any()
-				return true
-			})
-			mu.Lock()
-			records = append(records, logRecord{level: r.Level, msg: r.Message, attribs: attrs})
-			mu.Unlock()
-		},
-	}
+	h := &testutil.CaptureHandler{}
 	orig := slog.Default()
-	slog.SetDefault(slog.New(handler))
+	slog.SetDefault(slog.New(h))
 	defer slog.SetDefault(orig)
 
 	sender := webhook.NewSender()
@@ -116,19 +84,16 @@ func TestSender_LogsInfoOnSuccess(t *testing.T) {
 		t.Fatalf("Send() error: %v", err)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
 	var found bool
-	for _, rec := range records {
-		if rec.level == slog.LevelInfo && rec.msg == "webhook sent" {
-			if _, ok := rec.attribs["output"]; !ok {
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "webhook sent" {
+			if _, ok := rec.Attrs["output"]; !ok {
 				t.Error("log record missing key: output")
 			}
-			if _, ok := rec.attribs["statusCode"]; !ok {
+			if _, ok := rec.Attrs["statusCode"]; !ok {
 				t.Error("log record missing key: statusCode")
 			}
-			if _, ok := rec.attribs["elapsed"]; !ok {
+			if _, ok := rec.Attrs["elapsed"]; !ok {
 				t.Error("log record missing key: elapsed")
 			}
 			found = true

@@ -230,7 +230,5 @@ CREATE TABLE IF NOT EXISTS messages (
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);`
 
 func buildSchemaSQL(tableName string) string {
-	s := strings.ReplaceAll(schemaTemplate, "messages", tableName)
-	s = strings.ReplaceAll(s, "idx_"+tableName+"_created_at ON "+tableName, "idx_"+tableName+"_created_at ON "+tableName)
-	return s
+	return strings.ReplaceAll(schemaTemplate, "messages", tableName)
 }

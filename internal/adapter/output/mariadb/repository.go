@@ -275,9 +275,5 @@ CREATE TABLE IF NOT EXISTS messages (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
 
 func buildSchemaSQL(tableName string) string {
-	s := strings.ReplaceAll(schemaTemplate, "messages", tableName)
-	// Fix index names: idx_messages_input -> idx_{tableName}_input
-	s = strings.ReplaceAll(s, "idx_"+tableName+"_input", "idx_"+tableName+"_input")
-	s = strings.ReplaceAll(s, "idx_"+tableName+"_created_at", "idx_"+tableName+"_created_at")
-	return s
+	return strings.ReplaceAll(schemaTemplate, "messages", tableName)
 }

@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 
 	httpadapter "relaybox/internal/adapter/input/http"
 	inputport "relaybox/internal/application/port/input"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 type mockUseCase struct {
@@ -738,29 +738,9 @@ func TestHandler_GetOutput_NotFound(t *testing.T) {
 }
 
 func TestPostMessage_LogsInfoOnSuccess(t *testing.T) {
-	// Install a custom slog handler to capture log records.
-	type logRecord struct {
-		level   slog.Level
-		msg     string
-		attribs map[string]any
-	}
-	var mu sync.Mutex
-	var records []logRecord
-
-	handler := &captureHandler{
-		fn: func(r slog.Record) {
-			attrs := make(map[string]any)
-			r.Attrs(func(a slog.Attr) bool {
-				attrs[a.Key] = a.Value.Any()
-				return true
-			})
-			mu.Lock()
-			records = append(records, logRecord{level: r.Level, msg: r.Message, attribs: attrs})
-			mu.Unlock()
-		},
-	}
+	h := &testutil.CaptureHandler{}
 	orig := slog.Default()
-	slog.SetDefault(slog.New(handler))
+	slog.SetDefault(slog.New(h))
 	defer slog.SetDefault(orig)
 
 	router := newTestRouter(func(_ context.Context, _ string, _ string, _ []byte) (string, error) {
@@ -777,19 +757,16 @@ func TestPostMessage_LogsInfoOnSuccess(t *testing.T) {
 		t.Fatalf("status = %d, want 201", w.Code)
 	}
 
-	mu.Lock()
-	defer mu.Unlock()
-
 	var found bool
-	for _, rec := range records {
-		if rec.level == slog.LevelInfo && rec.msg == "message received" {
-			if _, ok := rec.attribs["input"]; !ok {
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelInfo && rec.Msg == "message received" {
+			if _, ok := rec.Attrs["input"]; !ok {
 				t.Error("log record missing key: input")
 			}
-			if _, ok := rec.attribs["messageID"]; !ok {
+			if _, ok := rec.Attrs["messageID"]; !ok {
 				t.Error("log record missing key: messageID")
 			}
-			if _, ok := rec.attribs["payloadSize"]; !ok {
+			if _, ok := rec.Attrs["payloadSize"]; !ok {
 				t.Error("log record missing key: payloadSize")
 			}
 			found = true
@@ -800,19 +777,6 @@ func TestPostMessage_LogsInfoOnSuccess(t *testing.T) {
 		t.Error(`expected INFO "message received" log record not found`)
 	}
 }
-
-// captureHandler is a minimal slog.Handler that invokes fn for each record.
-type captureHandler struct {
-	fn func(slog.Record)
-}
-
-func (h *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.fn(r)
-	return nil
-}
-func (h *captureHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(name string) slog.Handler       { return h }
 
 func TestDocs_HTML(t *testing.T) {
 	router := newTestRouter(func(_ context.Context, _ string, _ string, _ []byte) (string, error) {
