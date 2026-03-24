@@ -117,8 +117,33 @@ func (r *Repository) FindByInput(ctx context.Context, inputID string, limit, off
 	return messages, nil
 }
 
-func (r *Repository) DeleteOlderThan(_ context.Context, _ time.Time, _ []domain.MessageStatus) (int64, error) {
-	panic("not implemented")
+func (r *Repository) DeleteOlderThan(ctx context.Context, cutoff time.Time, statuses []domain.MessageStatus) (int64, error) {
+	var query string
+	var args []any
+
+	if len(statuses) == 0 {
+		query = `DELETE FROM messages WHERE created_at < ?`
+		args = []any{cutoff.UTC()}
+	} else {
+		placeholders := strings.Repeat("?,", len(statuses))
+		placeholders = placeholders[:len(placeholders)-1]
+		query = `DELETE FROM messages WHERE created_at < ? AND status IN (` + placeholders + `)`
+		args = make([]any, 0, 1+len(statuses))
+		args = append(args, cutoff.UTC())
+		for _, s := range statuses {
+			args = append(args, string(s))
+		}
+	}
+
+	result, err := r.sqlDB.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("delete older than: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+	return n, nil
 }
 
 func toMessage(row db.Message) domain.Message {
