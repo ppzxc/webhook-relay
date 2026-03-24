@@ -19,31 +19,52 @@ type WSHandler interface {
 	ServeWS(w http.ResponseWriter, r *http.Request, inputID string)
 }
 
-func NewRouter(receiveUC input.ReceiveMessageUseCase, getUC input.GetMessageUseCase, resolver input.InputResolver, ws WSHandler) *chi.Mux {
+func NewRouter(
+	receiveUC input.ReceiveMessageUseCase,
+	getUC input.GetMessageUseCase,
+	listUC input.ListMessagesUseCase,
+	requeueUC input.RequeueMessageUseCase,
+	configUC input.ConfigQueryUseCase,
+	resolver input.InputResolver,
+	ws WSHandler,
+) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(apiVersionMiddleware(APIVersion))
 
-	h := NewHandler(receiveUC, getUC)
+	h := NewHandler(receiveUC, getUC, listUC, requeueUC, configUC)
 
 	r.Get("/healthz", h.Healthz)
 	r.Get("/docs", apidocs.RedocHTMLHandler)
 	r.Get("/docs/openapi", apidocs.OpenAPIHandler)
 	r.Get("/docs/asyncapi", apidocs.AsyncAPIHandler)
 
+	// Config 엔드포인트 — 인증 불필요 (secret 미노출)
+	r.Get("/inputs", h.ListInputs)
+	r.Get("/outputs", h.ListOutputs)
+	r.Get("/outputs/{outputId}", h.GetOutput)
+
 	r.Route("/inputs/{inputId}", func(r chi.Router) {
-		r.Use(inputAuthMiddleware(resolver))
-		// 리터럴 /messages/ws를 와일드카드 /messages/{messageId}보다 먼저 등록
-		r.Get("/messages/ws", func(w http.ResponseWriter, req *http.Request) {
-			if ws == nil {
-				writeError(w, req, http.StatusNotImplemented, "Not Implemented", "websocket not configured")
-				return
-			}
-			ws.ServeWS(w, req, inputIDFromContext(req.Context()))
+		// Config 조회 — 인증 불필요
+		r.Get("/", h.GetInput)
+
+		// 메시지 엔드포인트 — inputAuthMiddleware 적용
+		r.Group(func(r chi.Router) {
+			r.Use(inputAuthMiddleware(resolver))
+			// 리터럴 /messages/ws를 와일드카드 /messages/{messageId}보다 먼저 등록
+			r.Get("/messages/ws", func(w http.ResponseWriter, req *http.Request) {
+				if ws == nil {
+					writeError(w, req, http.StatusNotImplemented, "Not Implemented", "websocket not configured")
+					return
+				}
+				ws.ServeWS(w, req, inputIDFromContext(req.Context()))
+			})
+			r.Get("/messages", h.ListMessages)
+			r.Post("/messages", h.PostMessage)
+			r.Get("/messages/{messageId}", h.GetMessage)
+			r.Patch("/messages/{messageId}", h.PatchMessage)
 		})
-		r.Post("/messages", h.PostMessage)
-		r.Get("/messages/{messageId}", h.GetMessage)
 	})
 
 	return r

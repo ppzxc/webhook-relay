@@ -123,6 +123,7 @@ func runServer(cfgPath string) error {
 
 	// Config-based routing (hot-reload support)
 	ruleReader := outputconfig.NewInMemoryRuleConfigReader(cfg)
+	configQuerySvc := service.NewConfigQueryService(cfg)
 
 	// Viper WatchConfig -> hot-reload
 	v, err := cfgpkg.NewViper(cfgPath)
@@ -131,6 +132,7 @@ func runServer(cfgPath string) error {
 	}
 	cfgpkg.Watch(v, func(newCfg *cfgpkg.Config) {
 		ruleReader.Update(newCfg)
+		configQuerySvc.Update(newCfg)
 		slog.Info("config reloaded")
 	})
 
@@ -178,7 +180,7 @@ func runServer(cfgPath string) error {
 	// HTTP + WebSocket adapter assembly
 	resolver := newConfigInputResolver(cfg)
 	wsHandler := wsadapter.NewHandler(msgSvc)
-	router := httpadapter.NewRouter(msgSvc, msgSvc, resolver, wsHandler)
+	router := httpadapter.NewRouter(msgSvc, msgSvc, msgSvc, msgSvc, configQuerySvc, resolver, wsHandler)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

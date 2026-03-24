@@ -8,4 +8,5 @@ var (
 	ErrMessageNotFound      = errors.New("message not found")
 	ErrInvalidTransition    = errors.New("invalid status transition")
 	ErrOutputSenderNotFound = errors.New("sender not registered for output type")
+	ErrOutputNotFound       = errors.New("output not found")
 )

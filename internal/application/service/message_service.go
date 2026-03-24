@@ -16,6 +16,8 @@ import (
 // Compile-time interface checks
 var _ input.ReceiveMessageUseCase = (*MessageService)(nil)
 var _ input.GetMessageUseCase = (*MessageService)(nil)
+var _ input.ListMessagesUseCase = (*MessageService)(nil)
+var _ input.RequeueMessageUseCase = (*MessageService)(nil)
 
 type MessageService struct {
 	repo        output.MessageRepository
@@ -42,6 +44,37 @@ func (s *MessageService) GetByID(ctx context.Context, id string) (domain.Message
 	msg, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return domain.Message{}, fmt.Errorf("get by id: %w", err)
+	}
+	return msg, nil
+}
+
+func (s *MessageService) ListByInput(ctx context.Context, inputID string, limit, offset int) ([]domain.Message, error) {
+	msgs, err := s.repo.FindByInput(ctx, inputID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list by input: %w", err)
+	}
+	if msgs == nil {
+		return []domain.Message{}, nil
+	}
+	return msgs, nil
+}
+
+func (s *MessageService) Requeue(ctx context.Context, messageID string) (domain.Message, error) {
+	msg, err := s.repo.FindByID(ctx, messageID)
+	if err != nil {
+		return domain.Message{}, fmt.Errorf("requeue: find: %w", err)
+	}
+	if msg.Status != domain.MessageStatusFailed {
+		return domain.Message{}, fmt.Errorf("requeue: %w", domain.ErrInvalidTransition)
+	}
+	if err := s.repo.UpdateDeliveryState(ctx, messageID, domain.MessageStatusPending, 0, time.Time{}); err != nil {
+		return domain.Message{}, fmt.Errorf("requeue: update: %w", err)
+	}
+	msg.Status = domain.MessageStatusPending
+	msg.RetryCount = 0
+	msg.LastAttemptAt = nil
+	if err := s.queue.Enqueue(ctx, msg); err != nil {
+		return domain.Message{}, fmt.Errorf("requeue: enqueue: %w", err)
 	}
 	return msg, nil
 }

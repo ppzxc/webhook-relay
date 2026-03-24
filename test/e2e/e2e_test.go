@@ -17,6 +17,7 @@ import (
 	"relaybox/internal/adapter/output/filequeue"
 	sqliteadapter "relaybox/internal/adapter/output/sqlite"
 	webhookadapter "relaybox/internal/adapter/output/webhook"
+	inputport "relaybox/internal/application/port/input"
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/application/service"
 	cfgpkg "relaybox/internal/config"
@@ -95,7 +96,7 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 		inputs:  map[string]string{"beszel": "beszel"},
 		secrets: map[string]string{"beszel": "tok"},
 	}
-	router := httpadapter.NewRouter(msgSvc, msgSvc, resolver, nil)
+	router := httpadapter.NewRouter(msgSvc, msgSvc, nil, nil, nil, resolver, nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
@@ -158,13 +159,155 @@ func TestE2E_PostMessage_Returns201(t *testing.T) {
 	}
 }
 
+func TestE2E_ListMessages(t *testing.T) {
+	cfg := &cfgpkg.Config{
+		Inputs:  []cfgpkg.InputConfig{{ID: "beszel", Engine: "CEL", Secret: "tok"}},
+		Outputs: []cfgpkg.OutputConfig{{ID: "wh1", Type: "WEBHOOK", Engine: "CEL", URL: "http://localhost:9999"}},
+		Queue:   cfgpkg.QueueConfig{WorkerCount: 1},
+	}
+	repo, _ := sqliteadapter.New(":memory:")
+	defer repo.Close()
+	queue, _ := filequeue.New(t.TempDir())
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
+	configQuerySvc := service.NewConfigQueryService(cfg)
+	resolver := &configInputResolver{
+		inputs:  map[string]string{"beszel": "beszel"},
+		secrets: map[string]string{"beszel": "tok"},
+	}
+	router := httpadapter.NewRouter(msgSvc, msgSvc, msgSvc, msgSvc, configQuerySvc, resolver, nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	// POST two messages
+	for i := 0; i < 2; i++ {
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+"/inputs/beszel/messages",
+			strings.NewReader(`{"n":1}`))
+		req.Header.Set("Authorization", "Bearer tok")
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("POST error: %v", err)
+		}
+		resp.Body.Close()
+	}
+
+	// List messages
+	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/inputs/beszel/messages?limit=10&offset=0", nil)
+	req.Header.Set("Authorization", "Bearer tok")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET list error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("list status = %d, want 200", resp.StatusCode)
+	}
+	var msgs []domain.Message
+	json.NewDecoder(resp.Body).Decode(&msgs)
+	if len(msgs) != 2 {
+		t.Errorf("expected 2 messages in list, got %d", len(msgs))
+	}
+}
+
+func TestE2E_ConfigEndpoints(t *testing.T) {
+	cfg := &cfgpkg.Config{
+		Inputs: []cfgpkg.InputConfig{
+			{ID: "beszel", Engine: "CEL", Secret: "tok"},
+			{ID: "dozzle", Engine: "EXPR", Secret: "tok2"},
+		},
+		Outputs: []cfgpkg.OutputConfig{
+			{ID: "wh1", Type: "WEBHOOK", Engine: "CEL", URL: "http://example.com/hook", RetryCount: 3, RetryDelayMs: 100},
+		},
+	}
+	repo, _ := sqliteadapter.New(":memory:")
+	defer repo.Close()
+	queue, _ := filequeue.New(t.TempDir())
+	msgSvc := service.NewMessageService(repo, queue, nil, nil)
+	configQuerySvc := service.NewConfigQueryService(cfg)
+	resolver := &configInputResolver{
+		inputs:  map[string]string{"beszel": "beszel", "dozzle": "dozzle"},
+		secrets: map[string]string{"beszel": "tok", "dozzle": "tok2"},
+	}
+	router := httpadapter.NewRouter(msgSvc, msgSvc, msgSvc, msgSvc, configQuerySvc, resolver, nil)
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	t.Run("GET /inputs", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/inputs")
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var inputs []inputport.InputSummary
+		json.NewDecoder(resp.Body).Decode(&inputs)
+		if len(inputs) != 2 {
+			t.Errorf("expected 2 inputs, got %d", len(inputs))
+		}
+	})
+
+	t.Run("GET /inputs/beszel", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/inputs/beszel")
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var inp inputport.InputSummary
+		json.NewDecoder(resp.Body).Decode(&inp)
+		if inp.ID != "beszel" {
+			t.Errorf("id = %q, want beszel", inp.ID)
+		}
+	})
+
+	t.Run("GET /outputs", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/outputs")
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var outputs []inputport.OutputSummary
+		json.NewDecoder(resp.Body).Decode(&outputs)
+		if len(outputs) != 1 {
+			t.Errorf("expected 1 output, got %d", len(outputs))
+		}
+		if outputs[0].ID != "wh1" {
+			t.Errorf("output id = %q, want wh1", outputs[0].ID)
+		}
+	})
+
+	t.Run("GET /outputs/wh1", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + "/outputs/wh1")
+		if err != nil {
+			t.Fatalf("error: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var out inputport.OutputSummary
+		json.NewDecoder(resp.Body).Decode(&out)
+		if out.RetryCount != 3 {
+			t.Errorf("retryCount = %d, want 3", out.RetryCount)
+		}
+	})
+}
+
 func TestE2E_Healthz(t *testing.T) {
 	repo, _ := sqliteadapter.New(":memory:")
 	defer repo.Close()
 	queue, _ := filequeue.New(t.TempDir())
 	msgSvc := service.NewMessageService(repo, queue, nil, nil)
 	resolver := &configInputResolver{}
-	router := httpadapter.NewRouter(msgSvc, msgSvc, resolver, nil)
+	router := httpadapter.NewRouter(msgSvc, msgSvc, nil, nil, nil, resolver, nil)
 	srv := httptest.NewServer(router)
 	defer srv.Close()
 
