@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -775,6 +776,39 @@ func TestPostMessage_LogsInfoOnSuccess(t *testing.T) {
 	}
 	if !found {
 		t.Error(`expected INFO "message received" log record not found`)
+	}
+}
+
+func TestPostMessage_LogsErrorOnUnexpectedServiceError(t *testing.T) {
+	h := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(h))
+	defer slog.SetDefault(orig)
+
+	unexpectedErr := errors.New("db connection error")
+	router := newTestRouter(func(_ context.Context, _ string, _ string, _ []byte) (string, error) {
+		return "", unexpectedErr
+	}, nil)
+	req := httptest.NewRequest(http.MethodPost, "/inputs/beszel/messages", strings.NewReader(`{"level":"critical"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+
+	var found bool
+	for _, rec := range h.Records() {
+		if rec.Level == slog.LevelError && rec.Msg == "unexpected error" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error(`expected ERROR "unexpected error" log record not found`)
 	}
 }
 
