@@ -15,8 +15,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
+
 	httpadapter "relaybox/internal/adapter/input/http"
 	"relaybox/internal/adapter/input/parser"
+	"relaybox/internal/logging"
 	tcpadapter "relaybox/internal/adapter/input/tcp"
 	wsadapter "relaybox/internal/adapter/input/websocket"
 	outputconfig "relaybox/internal/adapter/output/config"
@@ -88,7 +91,13 @@ func runServer(cfgPath string) error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	setupLogger(cfg)
+	logCloser := setupLogger(cfg)
+	defer func() {
+		if err := logCloser.Close(); err != nil {
+			slog.Error("log file close error", "err", err)
+		}
+	}()
+	slog.Info("starting relaybox", "version", version)
 
 	// Outbound adapters
 	repo, repoCloser, err := newRepository(cfg.Storage)
@@ -342,18 +351,74 @@ func generateSecret(length int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-func setupLogger(cfg *cfgpkg.Config) {
-	level := map[string]slog.Level{
-		"DEBUG": slog.LevelDebug, "WARN": slog.LevelWarn, "ERROR": slog.LevelError,
-	}[cfg.Log.Level]
-	var h slog.Handler
-	opts := &slog.HandlerOptions{Level: level}
-	if cfg.Log.Format == "JSON" {
-		h = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		h = slog.NewTextHandler(os.Stdout, opts)
+// setupLogger는 cfg에 따라 slog 기본 로거를 설정하고,
+// 파일 로거가 활성화된 경우 종료 시 Close()를 호출해야 할 Closer를 반환한다.
+// 파일 로거가 없으면 no-op Closer를 반환한다.
+func setupLogger(cfg *cfgpkg.Config) io.Closer {
+	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.Log.Level)}
+	var handlers []slog.Handler
+	var fileCloser io.Closer = io.NopCloser(nil)
+
+	if cfg.Log.Stdout.Enabled {
+		format := resolveFormat(cfg.Log.Stdout.Format, cfg.Log.Format)
+		handlers = append(handlers, newHandler(os.Stdout, format, opts))
 	}
-	slog.SetDefault(slog.New(h))
+
+	if cfg.Log.File.Enabled {
+		maxSize := cfg.Log.File.MaxSizeMB
+		if maxSize == 0 {
+			maxSize = 1024 * 1024 // 실질적 무제한 (1TB)
+		}
+		w := &lumberjack.Logger{
+			Filename:   cfg.Log.File.Path,
+			MaxSize:    maxSize,
+			MaxBackups: cfg.Log.File.MaxBackups,
+			MaxAge:     cfg.Log.File.MaxAgeDays,
+			Compress:   cfg.Log.File.Compress,
+		}
+		fileCloser = w
+		format := resolveFormat(cfg.Log.File.Format, cfg.Log.Format)
+		handlers = append(handlers, newHandler(w, format, opts))
+	}
+
+	switch len(handlers) {
+	case 0:
+		// config.Validate()에서 이미 거부되므로 여기에 도달할 수 없음
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, opts)))
+	case 1:
+		slog.SetDefault(slog.New(handlers[0]))
+	default:
+		slog.SetDefault(slog.New(logging.NewMultiHandler(handlers...)))
+	}
+
+	return fileCloser
+}
+
+func resolveFormat(specific, fallback string) string {
+	if specific != "" {
+		return strings.ToUpper(specific)
+	}
+	return strings.ToUpper(fallback)
+}
+
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToUpper(s) {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "WARN":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+func newHandler(w io.Writer, format string, opts *slog.HandlerOptions) slog.Handler {
+	if strings.ToUpper(format) == "JSON" {
+		return slog.NewJSONHandler(w, opts)
+	}
+	return slog.NewTextHandler(w, opts)
 }
 
 func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Closer, error) {

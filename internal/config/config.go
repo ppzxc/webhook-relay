@@ -26,8 +26,25 @@ type TLSConfig struct {
 }
 
 type LogConfig struct {
-	Level  string `mapstructure:"level"`
-	Format string `mapstructure:"format"`
+	Level  string          `mapstructure:"level"`
+	Format string          `mapstructure:"format"` // 하위 호환: stdout/file format 미설정 시 fallback
+	Stdout LogStdoutConfig `mapstructure:"stdout"`
+	File   LogFileConfig   `mapstructure:"file"`
+}
+
+type LogStdoutConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Format  string `mapstructure:"format"` // JSON, TEXT; 빈 문자열이면 log.format 상속
+}
+
+type LogFileConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	Format     string `mapstructure:"format"` // JSON, TEXT
+	Path       string `mapstructure:"path"`
+	MaxSizeMB  int    `mapstructure:"maxSizeMB"`  // 0 = 무제한 (내부적으로 1TB)
+	MaxBackups int    `mapstructure:"maxBackups"` // 보관할 이전 파일 수
+	MaxAgeDays int    `mapstructure:"maxAgeDays"` // 최대 보존 일수 (0 = 무제한)
+	Compress   bool   `mapstructure:"compress"`   // 이전 파일 gzip 압축
 }
 
 type InputConfig struct {
@@ -150,6 +167,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.writeTimeout", "30s")
 	v.SetDefault("log.level", "INFO")
 	v.SetDefault("log.format", "JSON")
+	v.SetDefault("log.stdout.enabled", true)
+	v.SetDefault("log.stdout.format", "")
+	v.SetDefault("log.file.enabled", false)
+	v.SetDefault("log.file.format", "JSON")
+	v.SetDefault("log.file.path", "./data/relaybox.log")
+	v.SetDefault("log.file.maxSizeMB", 100)
+	v.SetDefault("log.file.maxBackups", 5)
+	v.SetDefault("log.file.maxAgeDays", 30)
+	v.SetDefault("log.file.compress", true)
 	v.SetDefault("queue.workerCount", 2)
 	v.SetDefault("worker.defaultRetryCount", 3)
 	v.SetDefault("worker.defaultRetryDelay", "1s")
@@ -174,7 +200,26 @@ func unmarshalAndValidate(v *viper.Viper) (*Config, error) {
 var validEngines = map[string]struct{}{"CEL": {}, "EXPR": {}}
 var validTableName = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]{0,63}$`)
 
+var validLogFormats = map[string]struct{}{"JSON": {}, "TEXT": {}, "": {}}
+
 func validateConfig(cfg *Config) error {
+	// log 검증
+	if !cfg.Log.Stdout.Enabled && !cfg.Log.File.Enabled {
+		return fmt.Errorf("log: at least one of stdout or file must be enabled")
+	}
+	if _, ok := validLogFormats[strings.ToUpper(cfg.Log.Stdout.Format)]; !ok {
+		return fmt.Errorf("log.stdout.format: invalid value %q (valid: JSON, TEXT)", cfg.Log.Stdout.Format)
+	}
+	if _, ok := validLogFormats[strings.ToUpper(cfg.Log.File.Format)]; !ok {
+		return fmt.Errorf("log.file.format: invalid value %q (valid: JSON, TEXT)", cfg.Log.File.Format)
+	}
+	if cfg.Log.File.Enabled && cfg.Log.File.Path == "" {
+		return fmt.Errorf("log.file.path: must not be empty when file logging is enabled")
+	}
+	if cfg.Log.File.MaxSizeMB < 0 {
+		return fmt.Errorf("log.file.maxSizeMB: must be non-negative, got %d", cfg.Log.File.MaxSizeMB)
+	}
+
 	if strings.ToUpper(cfg.Storage.Type) == "MARIADB" && cfg.Storage.DSN == "" {
 		return fmt.Errorf("storage.dsn is required when storage.type is MARIADB")
 	}

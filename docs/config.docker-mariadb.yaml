@@ -8,8 +8,18 @@ server:
     keyFile: ""
 
 log:
-  level: INFO    # DEBUG, INFO, WARN, ERROR
-  format: JSON   # JSON, TEXT
+  level: INFO    # DEBUG, INFO, WARN, ERROR (stdout/file 공통)
+  stdout:
+    enabled: true
+    format: JSON   # JSON, TEXT
+  file:
+    enabled: false
+    format: JSON
+    path: /app/data/relaybox.log
+    maxSizeMB: 100
+    maxBackups: 5
+    maxAgeDays: 30
+    compress: true
 
 inputs:
   - id: example

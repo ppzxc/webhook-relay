@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ func New(dsn, tableName string) (*Repository, error) {
 	if _, err := sqlDB.Exec(buildSchemaSQL(tableName)); err != nil {
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	slog.Info("sqlite repository initialized", "tableName", tableName)
 	return &Repository{sqlDB: sqlDB, tableName: tableName}, nil
 }
 

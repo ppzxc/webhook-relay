@@ -8,10 +8,20 @@ server:
     keyFile: ""
 
 log:
-  level: INFO    # DEBUG, INFO, WARN, ERROR
+  level: INFO    # DEBUG, INFO, WARN, ERROR (stdout/file 공통)
                  # 주의: DEBUG 레벨은 요청 헤더(Authorization 포함) 및 전체 바디를 로그에 기록합니다.
                  #       운영 환경에서는 INFO 이상을 권장합니다.
-  format: JSON   # JSON, TEXT
+  stdout:
+    enabled: true
+    format: JSON   # JSON, TEXT (미설정 시 log.format 사용)
+  file:
+    enabled: false
+    format: JSON   # JSON, TEXT
+    path: ./data/relaybox.log
+    maxSizeMB: 100   # 파일 크기 초과 시 rotate (0 = 무제한)
+    maxBackups: 5    # 보관할 이전 파일 수
+    maxAgeDays: 30   # 최대 보존 일수 (0 = 무제한)
+    compress: true   # 이전 파일 gzip 압축
 
 inputs:
   - id: beszel

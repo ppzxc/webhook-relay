@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,5 +123,180 @@ func TestGenerateSecret_UniqueEachCall(t *testing.T) {
 	}
 	if a == b {
 		t.Error("two calls produced the same secret")
+	}
+}
+
+func TestParseLogLevel(t *testing.T) {
+	tests := []struct {
+		input string
+		want  slog.Level
+	}{
+		{"DEBUG", slog.LevelDebug},
+		{"debug", slog.LevelDebug},
+		{"INFO", slog.LevelInfo},
+		{"info", slog.LevelInfo},
+		{"WARN", slog.LevelWarn},
+		{"warn", slog.LevelWarn},
+		{"ERROR", slog.LevelError},
+		{"error", slog.LevelError},
+		{"", slog.LevelInfo},     // 빈 문자열 → INFO
+		{"UNKNOWN", slog.LevelInfo}, // 알 수 없는 값 → INFO
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseLogLevel(tt.input)
+			if got != tt.want {
+				t.Errorf("parseLogLevel(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveFormat(t *testing.T) {
+	tests := []struct {
+		specific string
+		fallback string
+		want     string
+	}{
+		{"TEXT", "JSON", "TEXT"},   // specific 우선
+		{"JSON", "TEXT", "JSON"},
+		{"", "JSON", "JSON"},       // 빈 문자열이면 fallback
+		{"", "TEXT", "TEXT"},
+		{"", "", ""},
+		{"text", "JSON", "TEXT"},   // 대문자 정규화
+	}
+	for _, tt := range tests {
+		t.Run(tt.specific+"/"+tt.fallback, func(t *testing.T) {
+			got := resolveFormat(tt.specific, tt.fallback)
+			if got != tt.want {
+				t.Errorf("resolveFormat(%q, %q) = %q, want %q", tt.specific, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetupLogger_StdoutOnly(t *testing.T) {
+	cfg := &cfgpkg.Config{
+		Log: cfgpkg.LogConfig{
+			Level:  "INFO",
+			Format: "JSON",
+			Stdout: cfgpkg.LogStdoutConfig{Enabled: true, Format: "JSON"},
+			File:   cfgpkg.LogFileConfig{Enabled: false},
+		},
+	}
+	// setupLogger가 패닉 없이 실행되는지 확인
+	setupLogger(cfg)
+	slog.Info("test stdout only")
+	// slog.Default가 교체되었으면 성공
+}
+
+func TestSetupLogger_FileOnly(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "test.log")
+
+	cfg := &cfgpkg.Config{
+		Log: cfgpkg.LogConfig{
+			Level:  "INFO",
+			Format: "JSON",
+			Stdout: cfgpkg.LogStdoutConfig{Enabled: false},
+			File: cfgpkg.LogFileConfig{
+				Enabled:    true,
+				Format:     "JSON",
+				Path:       logPath,
+				MaxSizeMB:  100,
+				MaxBackups: 3,
+				MaxAgeDays: 30,
+				Compress:   false,
+			},
+		},
+	}
+	setupLogger(cfg)
+	slog.Info("file only test", "key", "value")
+
+	// 파일이 생성되었는지 확인
+	if _, err := os.Stat(logPath); os.IsNotExist(err) {
+		t.Fatalf("log file not created at %s", logPath)
+	}
+}
+
+func TestSetupLogger_Dual(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "dual.log")
+
+	cfg := &cfgpkg.Config{
+		Log: cfgpkg.LogConfig{
+			Level:  "INFO",
+			Format: "JSON",
+			Stdout: cfgpkg.LogStdoutConfig{Enabled: true, Format: "JSON"},
+			File: cfgpkg.LogFileConfig{
+				Enabled:    true,
+				Format:     "JSON",
+				Path:       logPath,
+				MaxSizeMB:  100,
+				MaxBackups: 3,
+				MaxAgeDays: 30,
+				Compress:   false,
+			},
+		},
+	}
+	setupLogger(cfg)
+	slog.Info("dual test message", "env", "test")
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	if !bytes.Contains(content, []byte("dual test message")) {
+		t.Errorf("log file does not contain expected message, got: %s", content)
+	}
+}
+
+func TestSetupLogger_MaxSizeMB_Zero_NoError(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &cfgpkg.Config{
+		Log: cfgpkg.LogConfig{
+			Level:  "INFO",
+			Format: "JSON",
+			Stdout: cfgpkg.LogStdoutConfig{Enabled: false},
+			File: cfgpkg.LogFileConfig{
+				Enabled:   true,
+				Format:    "JSON",
+				Path:      filepath.Join(dir, "unlimited.log"),
+				MaxSizeMB: 0, // 무제한
+			},
+		},
+	}
+	// 패닉 없이 실행되어야 함
+	setupLogger(cfg)
+	slog.Info("unlimited size test")
+}
+
+func TestSetupLogger_LegacyFormatFallback(t *testing.T) {
+	// stdout.format이 비어있으면 log.format을 사용
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "legacy.log")
+	cfg := &cfgpkg.Config{
+		Log: cfgpkg.LogConfig{
+			Level:  "INFO",
+			Format: "JSON", // fallback
+			Stdout: cfgpkg.LogStdoutConfig{Enabled: false},
+			File: cfgpkg.LogFileConfig{
+				Enabled:   true,
+				Format:    "", // 비어있으면 log.format 상속 → "JSON"
+				Path:      logPath,
+				MaxSizeMB: 100,
+			},
+		},
+	}
+	setupLogger(cfg)
+	slog.Info("legacy format test")
+
+	content, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read log file: %v", err)
+	}
+	// JSON 형식이면 { 로 시작
+	if !strings.Contains(string(content), `"msg"`) {
+		t.Errorf("expected JSON format, got: %s", content)
 	}
 }
