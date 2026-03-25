@@ -22,6 +22,7 @@ type Config struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
+	ConnMaxIdleTime time.Duration
 	TableName       string
 }
 
@@ -58,6 +59,9 @@ func New(cfg Config) (*Repository, error) {
 	}
 	if cfg.ConnMaxLifetime > 0 {
 		sqlDB.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
+	if cfg.ConnMaxIdleTime > 0 {
+		sqlDB.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	}
 
 	if _, err := sqlDB.Exec(buildSchemaSQL(tableName)); err != nil {

@@ -100,6 +100,7 @@ type StorageConfig struct {
 	MaxOpenConns    int            `mapstructure:"maxOpenConns"`
 	MaxIdleConns    int            `mapstructure:"maxIdleConns"`
 	ConnMaxLifetime string         `mapstructure:"connMaxLifetime"` // Go duration, e.g. "5m"
+	ConnMaxIdleTime string         `mapstructure:"connMaxIdleTime"` // Go duration, e.g. "3m"
 	TableName       string         `mapstructure:"tableName"`       // 메시지 테이블 이름 (기본값: messages)
 	Rotation        RotationConfig `mapstructure:"rotation"`
 }
@@ -229,6 +230,11 @@ func validateConfig(cfg *Config) error {
 	if cfg.Storage.ConnMaxLifetime != "" {
 		if _, err := time.ParseDuration(cfg.Storage.ConnMaxLifetime); err != nil {
 			return fmt.Errorf("storage.connMaxLifetime: invalid duration %q: %w", cfg.Storage.ConnMaxLifetime, err)
+		}
+	}
+	if cfg.Storage.ConnMaxIdleTime != "" {
+		if _, err := time.ParseDuration(cfg.Storage.ConnMaxIdleTime); err != nil {
+			return fmt.Errorf("storage.connMaxIdleTime: invalid duration %q: %w", cfg.Storage.ConnMaxIdleTime, err)
 		}
 	}
 	if rot := cfg.Storage.Rotation; rot.Retention != "" {

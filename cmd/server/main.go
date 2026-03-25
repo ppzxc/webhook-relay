@@ -430,12 +430,20 @@ func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Close
 		}
 		return repo, repo, nil
 	case "MARIADB":
-		lifetime, _ := time.ParseDuration(cfg.ConnMaxLifetime)
+		lifetime, err := time.ParseDuration(cfg.ConnMaxLifetime)
+		if err != nil && cfg.ConnMaxLifetime != "" {
+			return nil, nil, fmt.Errorf("storage.connMaxLifetime: %w", err)
+		}
+		idleTime, err := time.ParseDuration(cfg.ConnMaxIdleTime)
+		if err != nil && cfg.ConnMaxIdleTime != "" {
+			return nil, nil, fmt.Errorf("storage.connMaxIdleTime: %w", err)
+		}
 		repo, err := mariadbadapter.New(mariadbadapter.Config{
 			DSN:             cfg.DSN,
 			MaxOpenConns:    cfg.MaxOpenConns,
 			MaxIdleConns:    cfg.MaxIdleConns,
 			ConnMaxLifetime: lifetime,
+			ConnMaxIdleTime: idleTime,
 			TableName:       cfg.TableName,
 		})
 		if err != nil {

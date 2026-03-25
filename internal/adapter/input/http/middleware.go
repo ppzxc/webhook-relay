@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -83,6 +84,7 @@ func mapError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, domain.ErrInvalidTransition):
 		writeError(w, r, http.StatusUnprocessableEntity, "Unprocessable Entity", err.Error())
 	default:
+		slog.Error("unexpected error", "err", err)
 		writeError(w, r, http.StatusInternalServerError, "Internal Server Error", "unexpected error")
 	}
 }
