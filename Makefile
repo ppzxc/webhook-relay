@@ -1,4 +1,4 @@
-VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION  ?= $(shell git tag --sort=-v:refname --merged HEAD 2>/dev/null | head -1 || git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BINARY   := relaybox
 CMD      := ./cmd/server/
 DIST     := dist
