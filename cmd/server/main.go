@@ -89,6 +89,7 @@ func runServer(cfgPath string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 	setupLogger(cfg)
+	slog.Info("starting relaybox", "version", version)
 
 	// Outbound adapters
 	repo, repoCloser, err := newRepository(cfg.Storage)

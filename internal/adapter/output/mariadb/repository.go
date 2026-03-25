@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -63,6 +64,7 @@ func New(cfg Config) (*Repository, error) {
 		sqlDB.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	slog.Info("mariadb repository initialized", "tableName", tableName)
 	return &Repository{sqlDB: sqlDB, tableName: tableName}, nil
 }
 
