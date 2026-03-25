@@ -490,6 +490,140 @@ storage:
 	}
 }
 
+func TestLoad_LogConfig_Defaults(t *testing.T) {
+	// 기존 config(log.level + log.format만) — stdout 기본 활성화, file 기본 비활성화
+	cfg, err := config.Load(writeConfig(t, testYAML))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.Log.Stdout.Enabled {
+		t.Error("log.stdout.enabled: expected true (default)")
+	}
+	if cfg.Log.File.Enabled {
+		t.Error("log.file.enabled: expected false (default)")
+	}
+	if cfg.Log.File.MaxSizeMB != 100 {
+		t.Errorf("log.file.maxSizeMB: got %d, want 100", cfg.Log.File.MaxSizeMB)
+	}
+	if cfg.Log.File.MaxBackups != 5 {
+		t.Errorf("log.file.maxBackups: got %d, want 5", cfg.Log.File.MaxBackups)
+	}
+	if cfg.Log.File.MaxAgeDays != 30 {
+		t.Errorf("log.file.maxAgeDays: got %d, want 30", cfg.Log.File.MaxAgeDays)
+	}
+	if !cfg.Log.File.Compress {
+		t.Error("log.file.compress: expected true (default)")
+	}
+}
+
+func TestLoad_LogConfig_BothDisabled_Error(t *testing.T) {
+	yaml := rotationBaseYAML + `
+log:
+  level: INFO
+  stdout:
+    enabled: false
+  file:
+    enabled: false
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error when both stdout and file are disabled")
+	}
+}
+
+func TestLoad_LogConfig_FileEnabledNoPath_Error(t *testing.T) {
+	yaml := rotationBaseYAML + `
+log:
+  level: INFO
+  stdout:
+    enabled: true
+  file:
+    enabled: true
+    path: ""
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error when file.enabled=true and file.path is empty")
+	}
+}
+
+func TestLoad_LogConfig_InvalidFormat_Error(t *testing.T) {
+	yaml := rotationBaseYAML + `
+log:
+  level: INFO
+  stdout:
+    enabled: true
+    format: LOGFMT
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for invalid stdout.format")
+	}
+}
+
+func TestLoad_LogConfig_InvalidMaxSizeMB_Error(t *testing.T) {
+	yaml := rotationBaseYAML + `
+log:
+  level: INFO
+  stdout:
+    enabled: true
+  file:
+    enabled: true
+    path: ./data/relaybox.log
+    maxSizeMB: -1
+`
+	_, err := config.Load(writeConfig(t, yaml))
+	if err == nil {
+		t.Fatal("expected error for negative maxSizeMB")
+	}
+}
+
+func TestLoad_LogConfig_NewStructure(t *testing.T) {
+	yaml := rotationBaseYAML + `
+log:
+  level: DEBUG
+  stdout:
+    enabled: true
+    format: TEXT
+  file:
+    enabled: true
+    format: JSON
+    path: ./data/relaybox.log
+    maxSizeMB: 50
+    maxBackups: 3
+    maxAgeDays: 7
+    compress: false
+`
+	cfg, err := config.Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if !cfg.Log.Stdout.Enabled {
+		t.Error("stdout.enabled: expected true")
+	}
+	if cfg.Log.Stdout.Format != "TEXT" {
+		t.Errorf("stdout.format: got %q, want TEXT", cfg.Log.Stdout.Format)
+	}
+	if !cfg.Log.File.Enabled {
+		t.Error("file.enabled: expected true")
+	}
+	if cfg.Log.File.Format != "JSON" {
+		t.Errorf("file.format: got %q, want JSON", cfg.Log.File.Format)
+	}
+	if cfg.Log.File.MaxSizeMB != 50 {
+		t.Errorf("file.maxSizeMB: got %d, want 50", cfg.Log.File.MaxSizeMB)
+	}
+	if cfg.Log.File.MaxBackups != 3 {
+		t.Errorf("file.maxBackups: got %d, want 3", cfg.Log.File.MaxBackups)
+	}
+	if cfg.Log.File.MaxAgeDays != 7 {
+		t.Errorf("file.maxAgeDays: got %d, want 7", cfg.Log.File.MaxAgeDays)
+	}
+	if cfg.Log.File.Compress {
+		t.Error("file.compress: expected false")
+	}
+}
+
 func TestValidateConfig_TableName(t *testing.T) {
 	tests := []struct {
 		name      string
