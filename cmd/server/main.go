@@ -344,17 +344,28 @@ func generateSecret(length int) (string, error) {
 }
 
 func setupLogger(cfg *cfgpkg.Config) {
-	level := map[string]slog.Level{
-		"DEBUG": slog.LevelDebug, "WARN": slog.LevelWarn, "ERROR": slog.LevelError,
-	}[cfg.Log.Level]
-	var h slog.Handler
-	opts := &slog.HandlerOptions{Level: level}
-	if cfg.Log.Format == "JSON" {
-		h = slog.NewJSONHandler(os.Stdout, opts)
-	} else {
-		h = slog.NewTextHandler(os.Stdout, opts)
+	opts := &slog.HandlerOptions{Level: parseLogLevel(cfg.Log.Level)}
+	slog.SetDefault(slog.New(newHandler(os.Stdout, cfg.Log.Format, opts)))
+}
+
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToUpper(s) {
+	case "DEBUG":
+		return slog.LevelDebug
+	case "WARN":
+		return slog.LevelWarn
+	case "ERROR":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
 	}
-	slog.SetDefault(slog.New(h))
+}
+
+func newHandler(w io.Writer, format string, opts *slog.HandlerOptions) slog.Handler {
+	if strings.ToUpper(format) == "JSON" {
+		return slog.NewJSONHandler(w, opts)
+	}
+	return slog.NewTextHandler(w, opts)
 }
 
 func newRepository(cfg cfgpkg.StorageConfig) (output.MessageRepository, io.Closer, error) {
