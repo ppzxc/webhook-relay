@@ -31,7 +31,11 @@ func New(dir string) (*Queue, error) {
 // recoverOrphans는 프로세스 크래시로 잔류한 .json.processing 파일을 .json으로 복구한다.
 // at-least-once 보장을 위해 New() 호출 시 항상 실행된다.
 func recoverOrphans(dir string) {
-	entries, _ := os.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		slog.Warn("failed to read queue directory", "dir", dir, "err", err)
+		return
+	}
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), ".json.processing") {
 			proc := filepath.Join(dir, e.Name())
@@ -57,7 +61,10 @@ func (q *Queue) Enqueue(_ context.Context, msg domain.Message) error {
 }
 
 func (q *Queue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
-	entries, _ := os.ReadDir(q.dir)
+	entries, err := os.ReadDir(q.dir)
+	if err != nil {
+		return domain.Message{}, nil, nil, fmt.Errorf("readdir: %w", err)
+	}
 	var files []string
 	for _, e := range entries {
 		if !e.IsDir() && filepath.Ext(e.Name()) == ".json" {

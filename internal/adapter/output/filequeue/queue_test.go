@@ -2,6 +2,7 @@ package filequeue_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -128,6 +129,64 @@ func TestQueue_Dequeue_LogsDebug(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected DEBUG log 'message dequeued', got records: %v", records)
+	}
+}
+
+func TestQueue_Dequeue_ReadDirError(t *testing.T) {
+	dir := t.TempDir()
+	q, err := filequeue.New(dir)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// 큐 디렉토리를 제거해 ReadDir 에러를 유발한다.
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("RemoveAll: %v", err)
+	}
+
+	_, _, _, err = q.Dequeue(context.Background())
+	if err == nil {
+		t.Fatal("expected error from Dequeue when queue dir is removed, got nil")
+	}
+	if errors.Is(err, output.ErrQueueEmpty) {
+		t.Errorf("expected readdir error, got ErrQueueEmpty")
+	}
+}
+
+func TestQueue_RecoverOrphans_ReadDirError(t *testing.T) {
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	dir := t.TempDir()
+
+	// recoverOrphans가 호출되는 New()를 dir 제거 후 실행하면 ReadDir 에러가 발생한다.
+	// 단, New()는 MkdirAll을 먼저 호출하므로, 권한을 제거해 ReadDir 에러를 유발한다.
+	if err := os.Chmod(dir, 0000); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	defer os.Chmod(dir, 0755) //nolint
+
+	// New()는 MkdirAll이 먼저 성공하지만 recoverOrphans의 ReadDir는 실패해야 한다.
+	// 권한 0000이면 ReadDir도 실패한다.
+	filequeue.New(dir) //nolint — 에러 여부와 무관하게 로그만 확인
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelWarn && r.Msg == "failed to read queue directory" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Logf("records: %v (may pass on root or some systems)", records)
+		// root 계정이나 특정 OS에서는 chmod가 효과 없을 수 있으므로 skip 처리
+		if os.Getuid() == 0 {
+			t.Skip("running as root, chmod test not effective")
+		}
+		t.Errorf("expected WARN log 'failed to read queue directory'")
 	}
 }
 
