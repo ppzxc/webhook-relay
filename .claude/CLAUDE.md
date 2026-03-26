@@ -58,6 +58,10 @@ cmd/server/main.go               ← DI 조립, cobra CLI
 | `cmd/server/` | cobra `start` 커맨드, 전체 DI 조립 |
 | `test/e2e/` | 전체 흐름 E2E 테스트 |
 
+## Architecture Decision Records (ADR)
+
+아키텍처 결정사항은 `docs/adr/`에 MADR 형식으로 기록되어 있다. 코드 변경 전 관련 ADR을 확인하고, 새로운 아키텍처 결정 시 ADR을 추가할 것. 인덱스: [`docs/adr/README.md`](../docs/adr/README.md)
+
 ## Key Design Decisions
 
 ### 열거형
