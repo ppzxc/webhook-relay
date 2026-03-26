@@ -1033,3 +1033,135 @@ func TestRelayWorker_DequeueError_LogsWarn(t *testing.T) {
 		t.Errorf("expected WARN log 'processOne failed' when Dequeue returns non-ErrQueueEmpty error, got records: %v", records)
 	}
 }
+
+func TestRelayWorker_Start_LogsWorkerCount(t *testing.T) {
+	queue := &mockMessageQueue{}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	ruleReader := &mockRuleReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 3)
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelInfo && r.Msg == "relay workers started" {
+			if count, ok := r.Attrs["count"]; ok && count == int64(3) {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected INFO log 'relay workers started' with count=3, got records: %v", records)
+	}
+}
+
+func TestRelayWorker_Stop_LogsShutdown(t *testing.T) {
+	queue := &mockMessageQueue{}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	ruleReader := &mockRuleReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 1)
+
+	cancel()
+	worker.Wait()
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelInfo && r.Msg == "relay worker stopping" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected INFO log 'relay worker stopping', got records: %v", records)
+	}
+}
+
+// mockPanicThenNormalQueue: 첫 Dequeue에서 panic, 이후 정상 메시지 반환.
+type mockPanicThenNormalQueue struct {
+	msg     domain.Message
+	paniced atomic.Bool
+	done    atomic.Bool
+}
+
+func (m *mockPanicThenNormalQueue) Enqueue(_ context.Context, _ domain.Message) error { return nil }
+func (m *mockPanicThenNormalQueue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
+	if !m.paniced.Swap(true) {
+		panic("simulated worker panic")
+	}
+	if m.done.Swap(true) {
+		time.Sleep(10 * time.Millisecond)
+		return domain.Message{}, nil, nil, output.ErrQueueEmpty
+	}
+	return m.msg, func() error { return nil }, func() error { return nil }, nil
+}
+
+func TestRelayWorker_PanicRecovery(t *testing.T) {
+	msg := domain.Message{ID: "panic-msg", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	queue := &mockPanicThenNormalQueue{msg: msg}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	sender := &mockSender{}
+	ruleReader := &mockRuleReader{
+		engine: "CEL",
+		entries: []domain.RuleEntry{{
+			Rule:    domain.Rule{},
+			Outputs: []domain.Output{{ID: "c1", Type: domain.OutputTypeWebhook, Engine: "CEL"}},
+		}},
+	}
+	registry := &mockRegistry{sender: sender}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	processed, onProcessed := processedChan()
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.PollBackoff = 10 * time.Millisecond
+	cfg.Hooks.OnProcessed = onProcessed
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+	worker.Start(ctx, 1)
+	waitForProcessed(t, processed)
+
+	// panic 후에도 메시지가 처리되어야 한다
+	if sender.count.Load() == 0 {
+		t.Error("expected worker to recover from panic and process message")
+	}
+
+	// ERROR 레벨 "relay worker panic recovered" 로그가 있어야 한다
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelError && r.Msg == "relay worker panic recovered" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected ERROR log 'relay worker panic recovered', got records: %v", records)
+	}
+}
