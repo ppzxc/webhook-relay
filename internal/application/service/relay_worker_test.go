@@ -998,14 +998,26 @@ func TestRelayWorker_DequeueError_LogsWarn(t *testing.T) {
 	ruleReader := &mockRuleReader{}
 	registry := &mockRegistry{sender: &mockSender{}}
 
+	errSeen := make(chan struct{}, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	cfg := service.DefaultRelayWorkerConfig()
+	cfg.Hooks.OnLoopError = func(err error) {
+		if errors.Is(err, dequeueErr) {
+			select {
+			case errSeen <- struct{}{}:
+			default:
+			}
+		}
+	}
 	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
 	worker.Start(ctx, 1)
 
-	// Give the worker a moment to hit the error and log it.
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-errSeen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for loop error callback")
+	}
 	cancel()
 	worker.Wait()
 

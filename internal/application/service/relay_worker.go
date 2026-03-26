@@ -61,6 +61,9 @@ func (w *RelayWorker) loop(ctx context.Context) {
 			if err := w.processOne(ctx); err != nil {
 				if !errors.Is(err, output.ErrQueueEmpty) {
 					slog.Warn("processOne failed", "err", err)
+					if w.cfg.Hooks.OnLoopError != nil {
+						w.cfg.Hooks.OnLoopError(err)
+					}
 				}
 				select {
 				case <-ctx.Done():

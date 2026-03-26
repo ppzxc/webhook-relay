@@ -7,6 +7,8 @@ import "time"
 type RelayWorkerHooks struct {
 	// OnProcessed is called after each successfully dequeued message is processed.
 	OnProcessed func()
+	// OnLoopError is called when the worker loop encounters a non-ErrQueueEmpty error.
+	OnLoopError func(err error)
 }
 
 // RelayWorkerConfig holds tunable parameters for RelayWorker.
