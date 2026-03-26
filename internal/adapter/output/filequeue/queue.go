@@ -52,6 +52,7 @@ func (q *Queue) Enqueue(_ context.Context, msg domain.Message) error {
 	if err := os.WriteFile(filepath.Join(q.dir, name), b, 0644); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
+	slog.Debug("message enqueued", "messageID", msg.ID, "input", msg.Input)
 	return nil
 }
 
@@ -65,7 +66,7 @@ func (q *Queue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, outp
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return domain.Message{}, nil, nil, fmt.Errorf("queue empty")
+		return domain.Message{}, nil, nil, output.ErrQueueEmpty
 	}
 
 	src := filepath.Join(q.dir, files[0])
@@ -84,6 +85,7 @@ func (q *Queue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, outp
 		return domain.Message{}, nil, nil, fmt.Errorf("unmarshal: %w", err)
 	}
 
+	slog.Debug("message dequeued", "messageID", msg.ID, "input", msg.Input)
 	ack := output.AckFunc(func() error { return os.Remove(proc) })
 	nack := output.NackFunc(func() error { return os.Rename(proc, src) })
 	return msg, ack, nack, nil

@@ -26,7 +26,7 @@ func (m *mockMessageQueue) Enqueue(_ context.Context, _ domain.Message) error { 
 func (m *mockMessageQueue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
 	if m.idx >= len(m.messages) {
 		time.Sleep(10 * time.Millisecond)
-		return domain.Message{}, nil, nil, errors.New("empty")
+		return domain.Message{}, nil, nil, output.ErrQueueEmpty
 	}
 	a := m.messages[m.idx]
 	m.idx++
@@ -205,7 +205,7 @@ func (m *mockMessageQueueWithNack) Enqueue(_ context.Context, _ domain.Message) 
 func (m *mockMessageQueueWithNack) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
 	if m.called.Swap(true) {
 		time.Sleep(10 * time.Millisecond)
-		return domain.Message{}, nil, nil, errors.New("empty")
+		return domain.Message{}, nil, nil, output.ErrQueueEmpty
 	}
 	return m.msg, func() error { return nil }, m.nackFn, nil
 }
@@ -974,5 +974,62 @@ func TestRelayWorker_MultipleRuleEntries_EachProcessedIndependently(t *testing.T
 	// entry 3 passes (no filter) → c3 delivered
 	if got := sender.count.Load(); got != 2 {
 		t.Errorf("expected 2 sends (entry1 + entry3, entry2 filtered), got %d", got)
+	}
+}
+
+// mockErrorQueue returns a non-ErrQueueEmpty error every time Dequeue is called.
+type mockErrorQueue struct{ err error }
+
+func (m *mockErrorQueue) Enqueue(_ context.Context, _ domain.Message) error { return nil }
+func (m *mockErrorQueue) Dequeue(_ context.Context) (domain.Message, output.AckFunc, output.NackFunc, error) {
+	time.Sleep(10 * time.Millisecond)
+	return domain.Message{}, nil, nil, m.err
+}
+
+func TestRelayWorker_DequeueError_LogsWarn(t *testing.T) {
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	dequeueErr := errors.New("disk read failed")
+	queue := &mockErrorQueue{err: dequeueErr}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	ruleReader := &mockRuleReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	errSeen := make(chan struct{}, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	cfg := service.DefaultRelayWorkerConfig()
+	cfg.Hooks.OnLoopError = func(err error) {
+		if errors.Is(err, dequeueErr) {
+			select {
+			case errSeen <- struct{}{}:
+			default:
+			}
+		}
+	}
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), cfg)
+	worker.Start(ctx, 1)
+
+	select {
+	case <-errSeen:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for loop error callback")
+	}
+	cancel()
+	worker.Wait()
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelWarn && r.Msg == "processOne failed" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected WARN log 'processOne failed' when Dequeue returns non-ErrQueueEmpty error, got records: %v", records)
 	}
 }

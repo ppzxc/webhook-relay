@@ -97,7 +97,14 @@ func runServer(cfgPath string) error {
 			slog.Error("log file close error", "err", err)
 		}
 	}()
-	slog.Info("starting relaybox", "version", version)
+	slog.Info("starting relaybox",
+		"version", version,
+		"logLevel", cfg.Log.Level,
+		"logStdoutEnabled", cfg.Log.Stdout.Enabled,
+		"storageType", cfg.Storage.Type,
+		"storageTableName", cfg.Storage.TableName,
+		"queueWorkerCount", cfg.Queue.WorkerCount,
+	)
 
 	// Outbound adapters
 	repo, repoCloser, err := newRepository(cfg.Storage)

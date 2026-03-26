@@ -2,6 +2,7 @@ package filequeue_test
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"relaybox/internal/adapter/output/filequeue"
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 // 컴파일 타임 인터페이스 검증
@@ -73,6 +75,60 @@ func TestQueue_New_RecoverOrphans(t *testing.T) {
 		t.Errorf("ID = %q, want %q", got.ID, msg.ID)
 	}
 	ack()
+}
+
+func TestQueue_Enqueue_LogsDebug(t *testing.T) {
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	q, _ := filequeue.New(t.TempDir())
+	msg := domain.Message{ID: "log-001", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	if err := q.Enqueue(context.Background(), msg); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelDebug && r.Msg == "message enqueued" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DEBUG log 'message enqueued', got records: %v", records)
+	}
+}
+
+func TestQueue_Dequeue_LogsDebug(t *testing.T) {
+	q, _ := filequeue.New(t.TempDir())
+	msg := domain.Message{ID: "log-002", Input: "beszel", Payload: domain.RawPayload(`{}`), Status: domain.MessageStatusPending, Version: 1}
+	q.Enqueue(context.Background(), msg) //nolint
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	if _, ack, _, err := q.Dequeue(context.Background()); err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	} else {
+		ack() //nolint
+	}
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelDebug && r.Msg == "message dequeued" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected DEBUG log 'message dequeued', got records: %v", records)
+	}
 }
 
 func TestQueue_Nack_Requeues(t *testing.T) {
