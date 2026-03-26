@@ -53,14 +53,30 @@ func (w *RelayWorker) Wait() {
 
 func (w *RelayWorker) loop(ctx context.Context) {
 	defer w.wg.Done()
-	w.safeProcessLoop(ctx)
-}
-
-func (w *RelayWorker) safeProcessLoop(ctx context.Context) {
 	for {
+		stopped := w.safeProcessLoop(ctx)
+		if stopped {
+			return
+		}
 		select {
 		case <-ctx.Done():
 			return
+		case <-time.After(w.cfg.PollBackoff):
+		}
+	}
+}
+
+func (w *RelayWorker) safeProcessLoop(ctx context.Context) (stopped bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("relay worker panic recovered", "panic", r)
+			stopped = false
+		}
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return true
 		default:
 			if err := w.processOne(ctx); err != nil {
 				if !errors.Is(err, output.ErrQueueEmpty) {
@@ -71,7 +87,7 @@ func (w *RelayWorker) safeProcessLoop(ctx context.Context) {
 				}
 				select {
 				case <-ctx.Done():
-					return
+					return true
 				case <-time.After(w.cfg.PollBackoff):
 				}
 			}
