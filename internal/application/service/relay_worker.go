@@ -61,6 +61,7 @@ func (w *RelayWorker) loop(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
+			slog.Info("relay worker stopping")
 			return
 		case <-time.After(w.cfg.PollBackoff):
 		}
