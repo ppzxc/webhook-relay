@@ -33,3 +33,6 @@ vendor/
 
 # Git worktrees
 .worktrees/
+
+# Superpowers docs
+docs/superpowers/
