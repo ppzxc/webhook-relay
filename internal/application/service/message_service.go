@@ -113,5 +113,6 @@ func (s *MessageService) Receive(ctx context.Context, inputID string, contentTyp
 	if err := s.queue.Enqueue(ctx, msg); err != nil {
 		return "", fmt.Errorf("receive: enqueue: %w", err)
 	}
+	slog.Info("message received", "messageID", id, "input", inputID)
 	return id, nil
 }

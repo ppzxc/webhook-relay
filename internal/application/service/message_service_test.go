@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"relaybox/internal/application/port/output"
 	"relaybox/internal/application/service"
 	"relaybox/internal/domain"
+	"relaybox/internal/testutil"
 )
 
 type mockRepo struct {
@@ -346,6 +348,38 @@ func TestMessageService_Requeue_NotFound(t *testing.T) {
 	_, err := svc.Requeue(context.Background(), "nonexistent")
 	if !errors.Is(err, domain.ErrMessageNotFound) {
 		t.Fatalf("expected ErrMessageNotFound, got %v", err)
+	}
+}
+
+func TestMessageService_Receive_LogsSuccess(t *testing.T) {
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	queue := &mockQueue{enqueueFn: func(_ context.Context, _ domain.Message) error { return nil }}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	svc := service.NewMessageService(repo, queue, nil, nil)
+	id, err := svc.Receive(context.Background(), "beszel", "application/json", []byte(`{"host":"srv1"}`))
+	if err != nil {
+		t.Fatalf("Receive() error: %v", err)
+	}
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelInfo && r.Msg == "message received" {
+			msgID, _ := r.Attrs["messageID"].(string)
+			inputVal, _ := r.Attrs["input"].(string)
+			if msgID == id && inputVal == "beszel" {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected INFO log 'message received' with messageID=%q input=beszel, got records: %v", id, records)
 	}
 }
 

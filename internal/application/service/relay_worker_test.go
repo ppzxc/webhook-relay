@@ -1034,6 +1034,69 @@ func TestRelayWorker_DequeueError_LogsWarn(t *testing.T) {
 	}
 }
 
+func TestRelayWorker_Start_LogsWorkerCount(t *testing.T) {
+	queue := &mockMessageQueue{}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	ruleReader := &mockRuleReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 3)
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelInfo && r.Msg == "relay workers started" {
+			if count, ok := r.Attrs["count"]; ok && count == int64(3) {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected INFO log 'relay workers started' with count=3, got records: %v", records)
+	}
+}
+
+func TestRelayWorker_Stop_LogsShutdown(t *testing.T) {
+	queue := &mockMessageQueue{}
+	repo := &mockRepo{saveFn: func(_ context.Context, _ domain.Message) error { return nil }}
+	ruleReader := &mockRuleReader{}
+	registry := &mockRegistry{sender: &mockSender{}}
+
+	captureH := &testutil.CaptureHandler{}
+	orig := slog.Default()
+	slog.SetDefault(slog.New(captureH))
+	defer slog.SetDefault(orig)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	worker := service.NewRelayWorker(queue, repo, ruleReader, registry, newExprRegistry(), service.DefaultRelayWorkerConfig())
+	worker.Start(ctx, 1)
+
+	cancel()
+	worker.Wait()
+
+	records := captureH.Records()
+	found := false
+	for _, r := range records {
+		if r.Level == slog.LevelInfo && r.Msg == "relay worker stopping" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected INFO log 'relay worker stopping', got records: %v", records)
+	}
+}
+
 // mockPanicThenNormalQueue: 첫 Dequeue에서 panic, 이후 정상 메시지 반환.
 type mockPanicThenNormalQueue struct {
 	msg     domain.Message

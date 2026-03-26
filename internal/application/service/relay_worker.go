@@ -44,6 +44,7 @@ func (w *RelayWorker) Start(ctx context.Context, workerCount int) {
 	for range workerCount {
 		go w.loop(ctx)
 	}
+	slog.Info("relay workers started", "count", workerCount)
 }
 
 // Wait blocks until all workers finish. Call after cancelling the context.
@@ -76,6 +77,7 @@ func (w *RelayWorker) safeProcessLoop(ctx context.Context) (stopped bool) {
 	for {
 		select {
 		case <-ctx.Done():
+			slog.Info("relay worker stopping")
 			return true
 		default:
 			if err := w.processOne(ctx); err != nil {
@@ -87,6 +89,7 @@ func (w *RelayWorker) safeProcessLoop(ctx context.Context) (stopped bool) {
 				}
 				select {
 				case <-ctx.Done():
+					slog.Info("relay worker stopping")
 					return true
 				case <-time.After(w.cfg.PollBackoff):
 				}
